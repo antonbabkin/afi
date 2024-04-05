@@ -1,0 +1,53 @@
+# symbolic links to packages: OS dependent, created on init
+nbs/rurec
+afi/reseng
+rurec/pubdata
+rurec/infogroup
+data/pubdata
+
+
+
+# temporary files
+tmp/
+cache/
+logs/
+
+# data files
+data/*
+*.csv
+*.rds
+*.pq
+*.parquet
+*.xls
+*.xlsx
+
+
+# Python
+/env/
+.ipynb_checkpoints/
+.last_checked
+*.pyc
+# only track .md versions of notebooks
+*.ipynb
+
+
+# R
+.Rproj.user
+*.Rhistory
+*.RData
+# either use global library or install with renv from DESCRIPTION
+renv.lock
+
+
+# Quarto
+/.quarto/
+*.html
+*_files/
+nbs/*_cache/
+
+
+
+# other
+*DS_Store*
+*.swp
+
