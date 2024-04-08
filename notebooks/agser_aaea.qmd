@@ -1,0 +1,87 @@
+---
+title: "AAEA-2024 Agricultural Services"
+format:
+  html:
+    toc: true
+    code-fold: true
+    df-print: paged
+    embed-resources: true
+---
+
+# imports
+
+```{r}
+#| output: false
+library(tidyverse)
+library(glue)
+library(margins)
+library(huxtable)
+library(arrow)
+
+source("scripts/agser_aaea.R")
+```
+
+
+# pubdata
+
+```{r}
+agcensus(2022) %>%
+  head() %>%
+  collect()
+
+qcew(2022) %>%
+  head() %>%
+  collect()
+```
+
+# farms
+
+```{r}
+data$farm() %>%
+  pivot_wider(id_cols = c(year, stcty)) %>%
+  group_by(year) %>%
+  summarize(across(is.numeric, \(x) sum(x, na.rm = TRUE)))
+
+```
+
+
+# agser
+
+```{r}
+# in 2002 estabs are not available in suppressed rows
+data$agser() %>%
+  group_by(year, disc) %>%
+  summarize(n = n(), est = sum(est, na.rm = TRUE), .groups = "drop")
+
+```
+
+
+
+# models
+
+```{r}
+x1 <- data$farm() %>%
+  pivot_wider(id_cols = c(year, stcty)) %>%
+  select(year, stcty, sale_tot, asset_tot, exp_labhire, exp_labcont, exp_agser) %>%
+  mutate(across(c(sale_tot, asset_tot, exp_labhire, exp_labcont, exp_agser), \(x) log10(replace_na(x, 0) + 1)))
+
+x2 <- data$agser() %>%
+  mutate(agser_act = (est > 0) | (disc == "N")) %>%
+  select(year, stcty, agser_act)
+  
+df <- left_join(x1, x2, join_by(year, stcty)) %>%
+  mutate(agser_act = replace_na(agser_act, FALSE),
+         year = as.factor(year))
+df %>% summary()
+
+ms <- list()
+ms[["base"]] <- lm(sale_tot ~ asset_tot + exp_labhire + exp_labcont + exp_agser + year, data = df)
+ms[["tfp"]] <- lm(sale_tot ~ asset_tot + exp_labhire + exp_labcont + exp_agser + agser_act + year, data = df)
+ms[["mfp"]] <- lm(sale_tot ~ (asset_tot + exp_labhire + exp_labcont + exp_agser) * agser_act + year, data = df)
+
+huxreg(ms)
+```
+
+
+
+

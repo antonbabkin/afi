@@ -1,12 +1,3 @@
-# symbolic links to packages: OS dependent, created on init
-nbs/rurec
-afi/reseng
-rurec/pubdata
-rurec/infogroup
-data/pubdata
-
-
-
 # temporary files
 tmp/
 cache/
@@ -20,6 +11,7 @@ data/*
 *.parquet
 *.xls
 *.xlsx
+*.zip
 
 
 # Python
@@ -37,13 +29,14 @@ data/*
 *.RData
 # either use global library or install with renv from DESCRIPTION
 renv.lock
-
+# .Renviron is used for user-specific configuration
+.Renviron
 
 # Quarto
 /.quarto/
 *.html
 *_files/
-nbs/*_cache/
+notebooks/*_cache/
 
 
 
