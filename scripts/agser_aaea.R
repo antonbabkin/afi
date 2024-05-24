@@ -55,16 +55,32 @@ data$farm <- function() {
   
   renames <- tribble(
     ~name,            ~short_desc,
-    "sale_tot",       "COMMODITY TOTALS - SALES, MEASURED IN $", 
-    "sale_mean",      "COMMODITY TOTALS - SALES, MEASURED IN $ / OPERATION", 
-    "n_sale_crop",    "CROP TOTALS - OPERATIONS WITH SALES",
-    "sale_crop",      "CROP TOTALS - SALES, MEASURED IN $",
-    "n_sale_anim",    "ANIMAL TOTALS, INCL PRODUCTS - OPERATIONS WITH SALES",
-    "sale_anim",      "ANIMAL TOTALS, INCL PRODUCTS - SALES, MEASURED IN $",
-    "asset_tot",      "AG LAND, INCL BUILDINGS - ASSET VALUE, MEASURED IN $",
-    "exp_labhire",    "LABOR, HIRED - EXPENSE, MEASURED IN $",
-    "exp_labcont",    "LABOR, CONTRACT - EXPENSE, MEASURED IN $",
-    "exp_agser",      "AG SERVICES, CUSTOMWORK - EXPENSE, MEASURED IN $"
+    "sale_tot",        "COMMODITY TOTALS - SALES, MEASURED IN $", 
+    "sale_mean",       "COMMODITY TOTALS - SALES, MEASURED IN $ / OPERATION", 
+    "n_sale_crop",     "CROP TOTALS - OPERATIONS WITH SALES",
+    "sale_crop",       "CROP TOTALS - SALES, MEASURED IN $",
+    "n_sale_anim",     "ANIMAL TOTALS, INCL PRODUCTS - OPERATIONS WITH SALES",
+    "sale_anim",       "ANIMAL TOTALS, INCL PRODUCTS - SALES, MEASURED IN $",
+    "asset_tot",       "AG LAND, INCL BUILDINGS - ASSET VALUE, MEASURED IN $",
+    "exp_tot",         "EXPENSE TOTALS, OPERATING - EXPENSE, MEASURED IN $",
+    "exp_fert",        "FERTILIZER TOTALS, INCL LIME & SOIL CONDITIONERS - EXPENSE, MEASURED IN $",
+    "exp_chem",        "CHEMICAL TOTALS - EXPENSE, MEASURED IN $",
+    "exp_seed",        "SEEDS & PLANTS TOTALS - EXPENSE, MEASURED IN $",
+    "exp_anim",        "ANIMAL TOTALS - EXPENSE, MEASURED IN $", # Livestock and poultry purchased or leased
+    "exp_feed",        "FEED - EXPENSE, MEASURED IN $",
+    "exp_fuel",        "FUELS, INCL LUBRICANTS - EXPENSE, MEASURED IN $", # Gasoline, fuels, and oils purchased
+    "exp_rent",        "RENT, CASH, LAND & BUILDINGS - EXPENSE, MEASURED IN $",
+    "exp_repair",      "SUPPLIES & REPAIRS, (EXCL LUBRICANTS) - EXPENSE, MEASURED IN $",
+    "exp_labhire",     "LABOR, HIRED - EXPENSE, MEASURED IN $",
+    "exp_labcont",     "LABOR, CONTRACT - EXPENSE, MEASURED IN $",
+    "exp_agser_cust",  "AG SERVICES, CUSTOMWORK - EXPENSE, MEASURED IN $",
+    "exp_agser_util",  "AG SERVICES, UTILITIES - EXPENSE, MEASURED IN $",
+    "exp_agser_rent",  "AG SERVICES, MACHINERY RENTAL - EXPENSE, MEASURED IN $",
+    "exp_agser_anim",  "AG SERVICES, CUSTOM SERVICES FOR LIVESTOCK, INCL MEDICAL SUPPLIES & VETERINARY - EXPENSE, MEASURED IN $",
+    "exp_agser_other", "AG SERVICES, OTHER - EXPENSE, MEASURED IN $",
+    "exp_int",         "INTEREST - EXPENSE, MEASURED IN $",
+    "exp_tax",         "TAXES, PROPERTY, REAL ESTATE & NON-REAL ESTATE, (EXCL PAID BY LANDLORD) - EXPENSE, MEASURED IN $",
+    
   )
   
   agcensus() %>%
@@ -83,7 +99,9 @@ if (FALSE) {
     filter(agg_level_desc == "COUNTY", domain_desc == "TOTAL") %>%
     distinct(short_desc) %>%
     collect() %>%
-    filter(str_detect(short_desc, "CUSTOMW"))
+    filter(str_detect(short_desc, "CALVE")) %>%
+    pull(short_desc)
+  
 }
 
 # agser ----

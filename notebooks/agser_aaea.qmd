@@ -36,7 +36,15 @@ qcew(2022) %>%
 
 # farms
 
+"AG SERVICES, CUSTOM SERVICES FOR LIVESTOCK, INCL MEDICAL SUPPLIES & VETERINARY - EXPENSE, MEASURED IN $"
+only appears in 2017 and 2022. why?
+
 ```{r}
+# verify Delaware against PDF published tables
+data$farm() %>%
+  filter(str_sub(stcty, 1, 2) == "10", year == 2022) %>%
+  pivot_wider(id_cols = c(year, stcty))
+
 data$farm() %>%
   pivot_wider(id_cols = c(year, stcty)) %>%
   group_by(year) %>%
@@ -44,6 +52,44 @@ data$farm() %>%
 
 ```
 
+## hogs sold per stock
+
+```{r}
+renames <- tribble(
+  ~name, ~short_desc,
+  "output_pig", "HOGS - SALES, MEASURED IN HEAD",
+  "output_beef", "CATTLE, INCL CALVES - SALES, MEASURED IN HEAD",
+  "stock_pig", "HOGS - INVENTORY",
+  "stock_beef", "CATTLE, COWS, BEEF - INVENTORY"
+)
+
+d <- agcensus() %>%
+    filter(agg_level_desc == "COUNTY", domain_desc == "TOTAL", short_desc %in% renames$short_desc) %>%
+    mutate(stcty = paste0(state_fips_code, county_code)) %>%
+    select(year, st = state_fips_code, stcty, short_desc, value) %>%
+    collect() %>%
+    left_join(renames, "short_desc") %>%
+    pivot_wider(id_cols = c(year, stcty)) %>%
+    mutate(
+      output_to_stock_pig = output_pig / stock_pig,
+      output_to_stock_beef = output_beef / stock_beef
+    )
+
+# delaware = 10
+# d %>% filter(year == 2017, str_starts(stcty, "10"))
+
+
+d %>%
+  ggplot() +
+  geom_boxplot(aes(factor(year), output_to_stock_pig)) +
+  scale_y_log10()
+
+d %>%
+  ggplot() +
+  geom_boxplot(aes(factor(year), output_to_stock_beef)) +
+  scale_y_log10()
+
+```
 
 # agser
 
@@ -84,4 +130,21 @@ huxreg(ms)
 
 
 
+# crop productivity
 
+```{r}
+
+
+d0 <- readxl::read_excel("~/Downloads/table01.xlsx", skip = 2, n_max = 75)
+
+names(d0)
+
+d0 %>%
+  mutate(yield = `Crops output: Total` / `Capital inputs: Land`) %>%
+  filter(Year > 2001) %>%
+  ggplot() + 
+  geom_line(aes(Year, yield)) +
+  geom_line(aes(Year, `Crops output: Total`), color = "red") +
+  geom_line(aes(Year, `Capital inputs: Land`), color = "blue")
+
+```
