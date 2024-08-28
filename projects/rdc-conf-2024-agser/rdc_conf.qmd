@@ -1,0 +1,53 @@
+---
+title: "Relevant preliminary results for NIFA-2024 A1661 circularity grant application"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+    page-layout: full
+    code-fold: true
+---
+
+# imports
+
+```{r}
+
+library(logger)
+library(tidyverse)
+library(tmap)
+
+
+log_threshold(WARN)
+theme_set(theme_minimal())
+
+# scripts
+source("projects/rdc-conf-2024-agser/agser.R", local = (agser <- new.env()))
+
+
+```
+
+
+# farms
+
+```{r}
+agser$agcensus(2022) %>% head() %>% collect()
+
+```
+
+
+# services
+
+```{r}
+rdc_res <- agser$get_rdc_results()
+
+rdc_res$desc %>%
+  filter(variable == "pay_cr1") %>%
+  select(commodity, year, mean, `50%`) %>%
+  pivot_longer(!c(commodity, year)) %>%
+  ggplot(aes(x = year, y = value)) +
+  geom_line(aes(color = name)) +
+  facet_wrap("commodity")
+
+
+```
