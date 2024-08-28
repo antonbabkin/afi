@@ -28,6 +28,7 @@ data/*
 *.Rhistory
 *.RData
 # either use global library or install with renv from DESCRIPTION
+renv/
 renv.lock
 # .Renviron is used for user-specific configuration
 .Renviron
