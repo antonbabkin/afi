@@ -14,7 +14,7 @@ format:
 #| output: false
 library(tidyverse)
 library(glue)
-library(margins)
+library(marginaleffects)
 library(huxtable)
 library(arrow)
 
@@ -91,6 +91,59 @@ d %>%
 
 ```
 
+
+## crop productivity
+
+```{r}
+
+# manually download productivity indexes file
+d0 <- readxl::read_excel("~/Downloads/table01.xlsx", skip = 2, n_max = 75)
+
+names(d0)
+
+d0 %>%
+  mutate(yield = `Crops output: Total` / `Capital inputs: Land`) %>%
+  filter(Year > 2001) %>%
+  ggplot() + 
+  geom_line(aes(Year, yield)) +
+  geom_line(aes(Year, `Crops output: Total`), color = "red") +
+  geom_line(aes(Year, `Capital inputs: Land`), color = "blue")
+
+```
+
+
+
+## custom work and size
+
+```{r}
+df <- data$farm()
+d <- df %>%
+  pivot_wider(id_cols = c(year, stcty)) %>%
+  mutate(avgsale_crop = sale_crop / n_sale_crop, sh_agser_cust = exp_agser_cust / exp_tot)
+
+d %>%
+  ggplot(aes(avgsale_crop, sh_agser_cust)) +
+  geom_point() +
+  geom_smooth() + 
+  scale_x_log10() +
+  facet_wrap("year")
+
+d %>%
+  ggplot(aes(sale_crop, sh_agser_cust)) +
+  geom_point() +
+  geom_smooth() + 
+  scale_x_log10() +
+  facet_wrap("year")
+
+d %>%
+  group_by(year) %>%
+  group_map(\(x, ...) lm(sh_agser_cust ~ log(avgsale_crop), x)) %>%
+  map(summary)
+
+```
+
+
+
 # agser
 
 ```{r}
@@ -130,21 +183,6 @@ huxreg(ms)
 
 
 
-# crop productivity
-
-```{r}
 
 
-d0 <- readxl::read_excel("~/Downloads/table01.xlsx", skip = 2, n_max = 75)
 
-names(d0)
-
-d0 %>%
-  mutate(yield = `Crops output: Total` / `Capital inputs: Land`) %>%
-  filter(Year > 2001) %>%
-  ggplot() + 
-  geom_line(aes(Year, yield)) +
-  geom_line(aes(Year, `Crops output: Total`), color = "red") +
-  geom_line(aes(Year, `Capital inputs: Land`), color = "blue")
-
-```
