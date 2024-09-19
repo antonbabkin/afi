@@ -1,5 +1,5 @@
 ---
-title: "Relevant preliminary results for NIFA-2024 A1661 circularity grant application"
+title: "2024 FSRDC conference - Ag services"
 format:
   html:
     toc: true
@@ -16,38 +16,380 @@ format:
 library(logger)
 library(tidyverse)
 library(tmap)
+library(tigris)
+library(skimr)
+library(modelsummary)
+library(patchwork)
 
 
 log_threshold(WARN)
 theme_set(theme_minimal())
+options(tigris_use_cache = TRUE)
+
 
 # scripts
 source("projects/rdc-conf-2024-agser/agser.R", local = (agser <- new.env()))
+glance.lmdf <- agser$glance.lmdf
+tidy.lmdf <- agser$tidy.lmdf
 
+param <- list(
+  years = c(2002, 2007, 2012, 2017),
+  commodities = c("crop", "corn", "soy", "wheat")
+)
 
-```
-
-
-# farms
-
-```{r}
-agser$agcensus(2022) %>% head() %>% collect()
-
-```
-
-
-# services
-
-```{r}
 rdc_res <- agser$get_rdc_results()
+```
+
+
+# Sample maps
+
+## all crops
+
+```{r}
+df <- tigris::counties(cb = TRUE, resolution = "20m", year = 2017) %>%
+  rename_with(tolower) %>%
+  rename(stcty = geoid) %>%
+  left_join(
+    agser$data_farm() %>%
+      filter(year == 2017, name %in% c("land_crop", "land_corn", "land_soy", "land_wheat")) %>%
+      pivot_wider(id_cols = stcty),
+    by = "stcty") %>%
+  left_join(
+    agser$data_agser() %>% filter(year == 2017) %>% mutate(est = na_if(est, 0)) %>% select(stcty, agser_est = est),
+    by = "stcty")
+
+p <- df %>%
+  mutate(agser = agser_est > 0) %>%
+  shift_geometry() %>%
+  tm_shape() +
+  tm_fill("agser", palette = "#e6550d", legend.show = FALSE) +
+  tm_layout(frame = FALSE)
+
+tmap_save(p, "projects/rdc-conf-2024-agser/output/map_sample_crop.png")
+p
 
 rdc_res$desc %>%
-  filter(variable == "pay_cr1") %>%
-  select(commodity, year, mean, `50%`) %>%
-  pivot_longer(!c(commodity, year)) %>%
-  ggplot(aes(x = year, y = value)) +
-  geom_line(aes(color = name)) +
-  facet_wrap("commodity")
+  filter(commodity == "crop", variable == "est") %>%
+  select(year, nobs)
+```
 
+## subcrops
+
+```{r}
+df <- tigris::counties(cb = TRUE, resolution = "20m", year = 2017) %>%
+  rename_with(tolower) %>%
+  rename(stcty = geoid) %>%
+  left_join(
+    agser$data_farm() %>%
+      filter(year == 2017, name %in% c("land_crop", "land_corn", "land_soy", "land_wheat")) %>%
+      pivot_wider(id_cols = stcty),
+    by = "stcty") %>%
+  left_join(
+    agser$data_agser() %>% filter(year == 2017) %>% mutate(est = na_if(est, 0)) %>% select(stcty, agser_est = est),
+    by = "stcty")
+
+p <- param$commodities %>%
+  map(\(x) {
+    df %>%
+      mutate(insample = .data[[paste0("land_", x)]] > 0 & agser_est > 0) %>%
+      shift_geometry() %>%
+      tm_shape() +
+      tm_fill(col = "insample", palette = "#e6550d", legend.show = FALSE) +
+      tm_layout(title = x)
+  }) %>%
+  tmap_arrange(ncol = 2, nrow = 2)
+
+tmap_save(p, "projects/rdc-conf-2024-agser/output/map_sample_subcrops.png", width = 11, height = 6)
+p
+
+rdc_res$desc %>%
+  filter(year == 2017, variable == "est") %>%
+  select(commodity, nobs)
+```
+
+
+# descriptives
+
+## overview
+
+```{r}
+
+for (v in unique(rdc_res$desc$variable)) {
+  p <- rdc_res$desc %>%
+    filter(variable == v) %>%
+    select(commodity, year, mean, `50%`) %>%
+    pivot_longer(!c(commodity, year)) %>%
+    ggplot(aes(x = year, y = value)) +
+    geom_line(aes(color = name)) +
+    facet_wrap("commodity", scales = "free_y") +
+    labs(title = v)
+  print(p)
+}
 
 ```
+
+## services
+
+Only in crop sample, trends similar across all commodities.
+
+```{r, fig.width=10, fig.height=3}
+
+yl <- list(est = c(0, 8), pay = c(0, 5000), pay_cr1 = c(0,1))
+ti <- list(est = "Establishments", pay = "Payroll, $1000s", pay_cr1 = "Payroll share of largest est.")
+ps <- list()
+for (v in c("est", "pay", "pay_cr1")) {
+  p <- rdc_res$desc %>%
+    filter(variable == v, commodity == "crop") %>%
+    ggplot(aes(x = year)) +
+    geom_boxplot(aes(lower = `25%`, upper = `75%`, middle = `50%`, ymin = `25%`, ymax = `75%`, group= year), stat = "identity", width = 2) +
+    geom_line(aes(y = mean)) +
+    geom_point(aes(y = mean)) +
+    scale_x_continuous(breaks = param$years) +
+    (if (v == "est") scale_y_continuous(breaks = 0:8) else scale_y_continuous()) +
+    labs(title = ti[[v]]) +
+    ylim(yl[[v]][1], yl[[v]][2]) +
+    ylab(NULL) + xlab(NULL)
+  ps[[v]] <- p
+}
+
+ps[["est"]] + ps[["pay"]] + ps[["pay_cr1"]]
+ggsave("projects/rdc-conf-2024-agser/output/desc_agser.png", bg = "white", width = 10, height = 3)
+
+```
+
+
+## farms
+
+```{r}
+f <- function(v) {
+  rdc_res$desc %>%
+    filter(variable == v, commodity == "crop") %>%
+    ggplot(aes(x = year)) +
+    geom_boxplot(aes(lower = `25%`, upper = `75%`, middle = `50%`, ymin = `25%`, ymax = `75%`, group = year), stat = "identity", width = 2) +
+    geom_line(aes(y = mean)) +
+    geom_point(aes(y = mean)) +
+    scale_x_continuous(breaks = param$years) +
+    ylab(NULL) + xlab(NULL)
+}
+
+p1 <- f("land") + labs(title = "Harvested cropland, acres") + ylim(0, NA)
+p2 <- f("avgland") + labs(title = "Average cropland, acres") + ylim(0, NA)
+p3 <- f("hhi_land") + labs(title = "Land HHI") + ylim(0, NA)
+p4 <- f("yield") + labs(title = "Sales per acre, $") + ylim(0, NA)
+
+ggsave("projects/rdc-conf-2024-agser/output/desc_farm1.png", plot = (p1 + p2 + p3), bg = "white", width = 10, height = 3)
+ggsave("projects/rdc-conf-2024-agser/output/desc_farm2.png", plot = p4, bg = "white", width = 3.33, height = 3)
+p1
+p2
+p3
+p4
+
+```
+
+
+# static_yield
+
+## base model
+
+```{r}
+models <- rdc_res$static_yield %>%
+  filter(commodity == "crop", year == 2017)
+
+fits <- unique(models$model) %>%
+  map(\(l) filter(models, model == l))
+
+modelsummary(fits, output = "huxtable")
+
+```
+
+
+## logpay coef by commodity-year
+
+
+```{r}
+models <- rdc_res$static_yield %>%
+  filter(model == "logyield ~ logpay + logland + logavgland + hhi_land",
+         term == "logpay") %>%
+  rename(label = sample_label)
+
+models %>%
+  left_join(models %>% tidy() %>% select(label, conf.low, conf.high),
+            by = "label") %>%
+  ggplot(aes(year)) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = commodity), alpha = 0.2) +
+  geom_line(aes(y = estimate, color = commodity)) +
+  scale_x_continuous(breaks = param$years)
+ggsave("projects/rdc-conf-2024-agser/output/reg_static-yield_logpay_crop-year.png", bg = "white", width = 10, height = 6)
+
+```
+
+
+## interacted ME
+
+
+```{r}
+# model equation:
+# logyield ~ b0 + b1 logpay + b2 logpay*logland + b3 logland + b4 logpay*logavgland + b5 logavgland
+# marinal effect:
+# d(logyield) / d(logpay) = b1 + b2 * logland + b4 * logavgland
+
+df <- rdc_res$static_yield %>%
+  filter(model == "logyield ~ logpay * (logland + logavgland) + hhi_land",
+         str_detect(term, "logpay")) %>%
+  select(commodity, year, sample_label, term, estimate) %>%
+  pivot_wider(id_cols = c(commodity, year, sample_label), names_from = term, values_from = estimate) %>%
+  rename_with(\(x) str_replace(x, ":", "_")) %>%
+  left_join(
+    rdc_res$desc %>%
+      select(sample_label, variable, "25%", "50%", "75%") %>%
+      filter(variable %in% c("land", "avgland")) %>%
+      mutate(variable = paste0("log", variable),
+             across(c("25%", "50%", "75%"), log)) %>%
+      pivot_wider(id_cols = sample_label, names_from = variable, values_from = c("25%", "50%", "75%"), names_glue = "{variable}_{.value}") %>%
+      rename_with(\(x) str_sub(x, 1, -2), .cols = ends_with("%")),
+    by = "sample_label") %>%
+  mutate(
+    dydx_logland_25 = logpay + logpay_logland * logland_25 + logpay_logavgland * logavgland_50,
+    dydx_logland_75 = logpay + logpay_logland * logland_75 + logpay_logavgland * logavgland_50,
+    dydx_logavgland_25 = logpay + logpay_logland * logland_50 + logpay_logavgland * logavgland_25,
+    dydx_logavgland_75 = logpay + logpay_logland * logland_50 + logpay_logavgland * logavgland_75
+  )
+
+d <- df %>%
+  select(commodity, year, starts_with("dydx_")) %>%
+  pivot_longer(!c(commodity, year), names_pattern = "dydx_(.+)_(..)", names_to = c("atvar", "atval")) %>%
+  mutate(atval = paste0(atval, "%"))
+  
+d %>%
+  filter(atvar == "logland") %>%
+  rename(land = atval) %>%
+  ggplot() +
+  geom_line(aes(year, value, color = land)) +
+  facet_wrap("commodity", scale = "free_y") +
+  geom_hline(aes(yintercept = 0), linetype = 2) +
+  scale_x_continuous(breaks = param$years) +
+  ylab("marginal effect of logpay")
+ggsave("projects/rdc-conf-2024-agser/output/reg_static-yield_me_land.png", bg = "white", width = 10, height = 6)
+
+d %>%
+  filter(atvar == "logavgland") %>%
+  rename(avg_land = atval) %>%
+  ggplot() +
+  geom_line(aes(year, value, color = avg_land)) +
+  facet_wrap("commodity", scale = "free_y") +
+  geom_hline(aes(yintercept = 0), linetype = 2) +
+  scale_x_continuous(breaks = param$years) +
+  ylab("marginal effect of logpay")
+ggsave("projects/rdc-conf-2024-agser/output/reg_static-yield_me_avgland.png", bg = "white", width = 10, height = 6)
+
+```
+
+# dynamic_yield
+
+A code that hacks together a table with years as models and logpay coefficient across crops as variables to display nicely with modelsummary... That code was lost.
+
+```{r}
+
+models <- rdc_res$dynamic_yield %>%
+  mutate(label = paste0(commodity, "_", year), .before = 1)
+
+fits <- unique(models$label) %>%
+  set_names() %>%
+  map(\(l) filter(models, label == l))
+
+for (x in param$commodities) {
+  models %>%
+    filter(commodity == x) %>%
+    distinct(label) %>%
+    pull() %>%
+    `[`(fits, .) %>%
+    modelsummary(output = "huxtable") %>%
+    print()
+}
+
+```
+
+
+# agser_pay ~ farm
+
+## spatial alignment
+
+```{r}
+df_geo <- tigris::counties(cb = TRUE, resolution = "20m", year = 2022) %>%
+  rename_with(tolower) %>%
+  rename(stcty = geoid)
+
+df <- df_geo %>%
+  left_join(
+    agser$data_farm() %>% filter(name == "sale_crop", year == 2017) %>% select(stcty, sale_crop = value),
+    by = "stcty") %>%
+  left_join(
+    agser$data_farm() %>% filter(name == "land_crop", year == 2017) %>% select(stcty, land_crop = value),
+    by = "stcty") %>%
+  left_join(
+    agser$data_agser() %>% filter(year == 2017) %>% mutate(est = na_if(est, 0)) %>% select(stcty, agser_est = est),
+    by = "stcty")
+
+
+p <- df %>% 
+  shift_geometry() %>%
+  mutate(`Harvested cropland, 1000s acres` = land_crop / 1000) %>%
+  tm_shape() +
+  tm_fill(col = "Harvested cropland, 1000s acres", style = "quantile", showNA = FALSE, legend.is.portrait = FALSE) +
+  tm_layout(frame = FALSE, legend.outside = TRUE, legend.outside.position = "bottom", outer.margins = 0)
+tmap_save(p, "projects/rdc-conf-2024-agser/output/map_land.png", width = 5, height = 4)
+p
+
+p <- df %>% 
+  shift_geometry() %>%
+  mutate(`Number of ag service providers` = agser_est) %>%
+  tm_shape() +
+  tm_fill(col = "Number of ag service providers", style = "quantile", showNA = FALSE, legend.is.portrait = FALSE) +
+  tm_layout(frame = FALSE, legend.outside = TRUE, legend.outside.position = "bottom", outer.margins = 0)
+tmap_save(p, "projects/rdc-conf-2024-agser/output/map_est.png", width = 5, height = 4)
+p
+```
+
+
+## reg
+
+
+```{r}
+
+models <- rdc_res$agser_pay %>%
+  mutate(label = paste0(commodity, "_", year), .before = 1)
+
+fits <- unique(models$label) %>%
+  set_names() %>%
+  map(\(l) filter(models, label == l))
+
+for (x in param$commodities) {
+  models %>%
+    filter(commodity == x) %>%
+    distinct(label) %>%
+    pull() %>%
+    `[`(fits, .) %>%
+    modelsummary(output = "huxtable") %>%
+    print()
+}
+```
+
+
+
+# agser_cr1 ~ farm
+
+
+```{r}
+
+models <- rdc_res$agser_cr %>%
+  filter(year == 2017) %>%
+  mutate(label = paste0(commodity, "_", year), .before = 1)
+
+fits <- unique(models$label) %>%
+  set_names() %>%
+  map(\(l) filter(models, label == l))
+
+modelsummary(fits, output = "huxtable")
+
+```
+
