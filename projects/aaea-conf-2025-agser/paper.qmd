@@ -1,0 +1,42 @@
+---
+title: "2025 AAEA conference - Ag services"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+    page-layout: full
+    code-fold: true
+---
+
+# imports
+
+```{r}
+
+library(tidyverse)
+
+```
+
+# Sample maps
+
+## all crops
+
+![Agricultural land](output/map_land.png)
+
+# Productivity
+
+We estimate the following model:
+
+$$
+yield_{it} = \beta_0 + \beta_1 payroll_{it} + \epsilon_{it}
+$$
+
+Hey you dumdum, I am editing this document in a separate window. Dare to save?
+
+```{r}
+data.frame(a = 1:3)
+```
+
+Rendering works fine, but can be have a live preview of changes?
+
+# is it watching?

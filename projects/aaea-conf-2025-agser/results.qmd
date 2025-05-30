@@ -1,0 +1,648 @@
+---
+title: "2025 AAEA conference - Ag services"
+format:
+  html:
+    date: today
+    toc: true
+    toc-depth: 2
+    embed-resources: true
+    page-layout: full
+    code-fold: true
+    df-print: paged
+---
+
+All dollars values are in real terms.
+
+```{r}
+#| output: false
+
+library(logger)
+library(tidyverse)
+library(tmap)
+library(tigris)
+library(skimr)
+library(modelsummary)
+library(patchwork)
+
+
+log_threshold(WARN)
+theme_set(theme_minimal())
+options(tigris_use_cache = TRUE)
+
+
+# scripts
+source("projects/aaea-conf-2025-agser/agser.R", local = (agser <- new.env()))
+glance.lmdf <- agser$glance.lmdf
+tidy.lmdf <- agser$tidy.lmdf
+
+
+
+PAR <- list(
+  lbd_years = c(2002, 2007, 2012, 2017),
+  commodities = c("crop", "corn", "soy", "wheat")
+)
+
+rdc_2024 <- agser$get_rdc_res_2024()
+```
+
+
+
+# Farm productivity
+
+Aggregate national statistics from Census of Agriculture and BEA.
+
+Sales per acre give a simple measure that combines all crops, but are affected by price fluctuations and lump together row crops with fruits and vegetables.
+Yields (production per acre) are crop-specific, and we look at corn, soybeans and wheat.
+
+```{r}
+df_farm <- agser$data_farm("national")
+
+```
+
+## sales per acre
+
+Increase over time with nearly constant total acreage.
+
+```{r}
+#| fig-width: 10
+#| fig-height: 4
+
+d <- df_farm %>%
+  filter(name %in% c("sale_crop", "land_crop")) %>%
+  pivot_wider(id_cols = year) %>%
+  mutate(sale_per_acre = sale_crop / land_crop) %>%
+  pivot_longer(!year)
+
+p1 <- d %>%
+  filter(name == "sale_crop") %>%
+  ggplot() +
+  geom_line(aes(year, value)) +
+  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_currency(scale_cut = scales::cut_short_scale())) +
+  labs(title = "Crop sales")
+
+p2 <- d %>%
+  filter(name == "land_crop") %>%
+  ggplot() +
+  geom_line(aes(year, value)) +
+  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
+  labs(title = "Harvested cropland")
+
+p3 <- d %>%
+  filter(name == "sale_per_acre") %>%
+  ggplot() +
+  geom_line(aes(year, value)) +
+  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_currency(scale_cut = scales::cut_short_scale())) +
+  labs(title = "Sales per acre")
+
+p1 + p2 + p3
+```
+
+### county distribution in agser sample
+
+2000 counties: not all counties with farming have service providers.
+
+```{r}
+rdc_2024$desc %>%
+  filter(variable == "yield", commodity == "crop") %>%
+  ggplot(aes(x = year)) +
+  geom_boxplot(aes(lower = `25%`, upper = `75%`, middle = `50%`, ymin = `25%`, ymax = `75%`, group = year), stat = "identity", width = 2) +
+  geom_line(aes(y = mean)) +
+  geom_point(aes(y = mean)) +
+  scale_x_continuous(name = "", breaks = PAR$lbd_years) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_currency(scale_cut = scales::cut_short_scale())) +
+  labs(title = "Sales per acre (mean and [25%|50%|75%])")
+
+```
+
+
+## yield
+
+Varying dynamic across crop types, but yields generally increase.
+
+```{r}
+d <- df_farm %>%
+  filter(str_detect(name, "^(land|prod)_(corn|soy|wheat)")) %>%
+  separate_wider_delim(name, "_", names = c("name", "com")) %>%
+  pivot_wider(id_cols = c(year, com)) %>%
+  mutate(yield = prod / land) %>%
+  pivot_longer(!c(year, com)) %>%
+  mutate(name = ordered(name, c("prod", "land", "yield")))
+
+d %>%
+  ggplot() +
+  geom_line(aes(year, value)) +
+  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
+  facet_wrap(vars(com, name), ncol = 3, scales = "free_y") +
+  labs(title = "Crop land, production and yield")
+
+d %>%
+  arrange(com, name, year) %>%
+  mutate(value = value / first(value), .by = c(com, name)) %>%
+  ggplot() +
+  geom_line(aes(year, value)) +
+  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  scale_y_continuous(name = "", limits = c(0.8, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale())) +
+  facet_wrap(vars(com, name), ncol = 3, scales = "fixed") +
+  labs(title = "Crop land, production and yield, 2002 = 100%")
+
+```
+
+# Farm expenses
+
+Multiple categories relate to ag services.
+Contract labor expense likely also goes to providers.
+
+```{r}
+#| rows.print: 20
+#| column: screen-inset
+tribble(
+  ~name,            ~short_desc,
+  "exp_tot",         "EXPENSE TOTALS, OPERATING - EXPENSE, MEASURED IN $",
+  "exp_fert",        "FERTILIZER TOTALS, INCL LIME & SOIL CONDITIONERS - EXPENSE, MEASURED IN $",
+  "exp_chem",        "CHEMICAL TOTALS - EXPENSE, MEASURED IN $",
+  "exp_seed",        "SEEDS & PLANTS TOTALS - EXPENSE, MEASURED IN $",
+  "exp_anim",        "ANIMAL TOTALS - EXPENSE, MEASURED IN $", # Livestock and poultry purchased or leased
+  "exp_feed",        "FEED - EXPENSE, MEASURED IN $",
+  "exp_fuel",        "FUELS, INCL LUBRICANTS - EXPENSE, MEASURED IN $", # Gasoline, fuels, and oils purchased
+  "exp_rent",        "RENT, CASH, LAND & BUILDINGS - EXPENSE, MEASURED IN $",
+  "exp_repair",      "SUPPLIES & REPAIRS, (EXCL LUBRICANTS) - EXPENSE, MEASURED IN $",
+  "exp_labhire",     "LABOR, HIRED - EXPENSE, MEASURED IN $",
+  "exp_labcont",     "LABOR, CONTRACT - EXPENSE, MEASURED IN $",
+  "exp_agser_cust",  "AG SERVICES, CUSTOMWORK - EXPENSE, MEASURED IN $",
+  "exp_agser_util",  "AG SERVICES, UTILITIES - EXPENSE, MEASURED IN $",
+  "exp_agser_rent",  "AG SERVICES, MACHINERY RENTAL - EXPENSE, MEASURED IN $",
+  "exp_agser_anim",  "AG SERVICES, CUSTOM SERVICES FOR LIVESTOCK, INCL MEDICAL SUPPLIES & VETERINARY - EXPENSE, MEASURED IN $",
+  "exp_agser_other", "AG SERVICES, OTHER - EXPENSE, MEASURED IN $",
+  "exp_int",         "INTEREST - EXPENSE, MEASURED IN $",
+  "exp_tax",         "TAXES, PROPERTY, REAL ESTATE & NON-REAL ESTATE, (EXCL PAID BY LANDLORD) - EXPENSE, MEASURED IN $"
+  ) %>%
+  mutate(short_desc = str_sub(short_desc, 1, -25))
+```
+
+- All crop related expenses have been growing over time.
+- Ag services - at a very slow rate, +25% over 20 years.
+- Contract labor expenses - one of the fastest growths, nearly doubled.
+
+```{r}
+d <- df_farm %>%
+  filter(str_starts(name, "exp_"), !(name %in% c("exp_tot", "exp_anim", "exp_feed", "exp_int", "exp_tax", "exp_agser_anim"))) %>%
+  mutate(name = if_else(str_detect(name, "agser"), "exp_agser", name)) %>%
+  summarize(value = sum(value), .by = c(year, name))
+
+d %>%
+  ggplot() +
+  geom_line(aes(year, value)) + 
+  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_currency(scale_cut = scales::cut_short_scale())) +
+  facet_wrap("name", scales = "free_y") +
+  labs(title = "Crop related expenses")
+
+d %>%
+  arrange(name, year) %>%
+  mutate(value = value / first(value), .by = name) %>%
+  ggplot() +
+  geom_line(aes(year, value)) + 
+  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  scale_y_continuous(name = "", limits = c(0.8, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale())) +
+  facet_wrap("name", scales = "fixed") +
+  labs(title = "Crop related expenses, 2002 = 100%")
+
+```
+
+
+
+```{r}
+d <- df_farm %>%
+  filter(str_starts(name, "exp_agser"), name != "exp_agser_anim")
+
+d %>%
+  ggplot() +
+  geom_line(aes(year, value)) + 
+  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_currency(scale_cut = scales::cut_short_scale())) +
+  facet_wrap("name", scales = "free_y") +
+  labs(title = "Ag services expenses")
+
+d %>%
+  arrange(name, year) %>%
+  mutate(value = value / first(value), .by = name) %>%
+  ggplot() +
+  geom_line(aes(year, value)) + 
+  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  scale_y_continuous(name = "", limits = c(0.8, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale())) +
+  facet_wrap("name", scales = "fixed") +
+  labs(title = "Ag services expenses, 2002 = 100%")
+
+```
+
+
+
+## BEA expenses
+
+Use of intermediate inputs and compensation of employees by crop industries.
+
+
+```{r}
+df_io <- agser$data_io() %>%
+  filter(com_code %in% c("115000", "T005", "V00100"), str_starts(ind_code, "111"))
+df_io <- bind_rows(
+  df_io,
+  df_io %>%
+    summarize(pur_val = sum(pur_val), .by = c(year, com_code, com_name)) %>%
+    mutate(ind_code = "111", ind_name = "All crops")
+) %>%
+  mutate(
+    com = case_match(
+      com_code,
+      "115000" ~ "agser",
+      "T005" ~ "tot_int",
+      "V00100" ~ "emp"
+    ),
+    ind = case_match(
+      ind_code,
+      "1111A0" ~ "oilseed",
+      "1111B0" ~ "grain",
+      "111200" ~ "vegetable, melon",
+      "111300" ~ "fruit, nut",
+      "111400" ~ "greenhouse",
+      "111900" ~ "other",
+      "111"    ~ "crops"
+    )
+  ) %>%
+  rename(value = pur_val)
+
+df_io %>%
+  distinct(com, com_code, com_name)
+
+df_io %>%
+  distinct(ind, ind_code, ind_name)
+```
+
+- Ag service expenses grow faster than total intermediate expenses.
+- Much faster than "compensation of employees" - not clear if it includes contract labor.
+
+```{r}
+#| fig-width: 10
+#| fig-height: 4
+d <- df_io %>%
+  filter(ind == "crops") %>%
+  mutate(com = ordered(com, c("agser", "tot_int", "emp")))
+
+d %>%
+  ggplot() +
+  geom_line(aes(year, value)) + 
+  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_currency(scale_cut = scales::cut_short_scale())) +
+  facet_wrap(c("com"), ncol = 3, scales = "free_y") +
+  labs(title = "Crop industry expenses")
+
+d %>%
+  arrange(com, year) %>%
+  mutate(value = value / first(value), .by = com) %>%
+  ggplot() +
+  geom_line(aes(year, value)) +
+  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale())) +
+  facet_wrap("com", scales = "fixed") +
+  labs(title = "Crop industry expenses, 2002 = 100%")
+
+```
+
+
+## agser expenses by crop
+
+
+```{r}
+#| fig-width: 10
+#| fig-height: 6
+d <- df_io %>%
+  filter(ind != "crops") %>%
+  mutate(ind = if_else(ind %in% c("grain", "oilseed"), ind, "all_other")) %>%
+  summarize(value = sum(value), .by = c(year, ind, com)) %>%
+  mutate(com = ordered(com, c("agser", "tot_int", "emp"))) %>%
+  mutate(ind = ordered(ind, c("grain", "oilseed", "all_other")))
+
+d %>%
+  ggplot() +
+  geom_line(aes(year, value)) + 
+  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_currency(scale_cut = scales::cut_short_scale())) +
+  facet_wrap(c("ind", "com"), ncol = 3, scales = "free_y") +
+  labs(title = "Expenses by crop")
+
+d %>%
+  arrange(ind, com, year) %>%
+  mutate(value = value / first(value), .by = c(ind, com)) %>%
+  ggplot() +
+  geom_line(aes(year, value)) +
+  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale())) +
+  facet_wrap(c("ind", "com"), ncol = 3, scales = "fixed") +
+  labs(title = "Expenses by crop, 2002 = 100%")
+```
+
+# Farm capital
+
+Stock of capital (machinery and equipment).
+Did it move from farms to providers?
+
+## Census
+
+More than doubled over 20 years.
+
+```{r}
+#| fig-width: 10
+#| fig-height: 4
+d <- agser$data_farm("national") %>%
+  filter(name == "asset_mach")
+
+p1 <- d %>%
+  ggplot() +
+  geom_line(aes(year, value)) + 
+  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_currency(scale_cut = scales::cut_short_scale())) +
+  labs(title = "Estimated market value of machinery and equipment")
+
+p2 <- d %>%
+  arrange(year) %>%
+  mutate(value = value / first(value)) %>%
+  ggplot() +
+  geom_line(aes(year, value)) +
+  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  scale_y_continuous(name = "", limits = c(0.8, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale())) +
+  labs(title = "2002 = 100%")
+
+p1 + p2
+```
+
+## BEA
+
+BEA fixed asset accounts allow us to evaluate capital stock of ag service providers.
+Although the industry is lumped with fishing forestry and fishing, we can look at equipment classes related to agriculture: "Farm tractors" and "Other agricultural machinery".
+
+An interesting patterns stands out.
+While farms roughly doubled stock of tractors and other machinery, providers stock of tractors was small and declining, but stock of other machinery increased tenfold. 
+
+```{r}
+d <- pubdata::get("bea_fa", "det_nonres_stk-cc") %>%
+  filter(year %in% 2002:2022, asset_code %in% c("EO30", "EO21"), ind_code %in% c("110C", "113F")) %>%
+  mutate(value = value * 1e6) %>%
+  mutate(ass = case_match(asset_code, "EO30" ~ "other ag machine", "EO21" ~ "tractors") %>% ordered(c("tractors", "other ag machine"))) %>%
+  mutate(ind = case_match(ind_code, "110C" ~ "farms", "113F" ~ "forest, fish and serv"))
+
+
+d %>%
+  ggplot() +
+  geom_line(aes(year, value)) + 
+  scale_x_continuous(name = "", breaks = seq(2002, 2022, 5)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_currency(scale_cut = scales::cut_short_scale())) +
+  facet_wrap(c("ass", "ind"), ncol = 2, scales = "free_y") +
+  labs(title = "Asset stock")
+
+d %>%
+  arrange(ind_code, asset_code, year) %>%
+  mutate(value = value / first(value), .by = c(ind_code, asset_code)) %>%
+  ggplot() +
+  geom_line(aes(year, value)) +
+  scale_x_continuous(name = "", breaks = seq(2002, 2022, 5)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale())) +
+  facet_wrap(c("ass", "ind"), ncol = 2, scales = "fixed") +
+  labs(title = "Asset stock, 2002 = 100%")
+```
+
+# Service providers
+
+## size
+
+- Steady employment and payroll of non-agricultural worksers.
+- Doubling payroll of agricultural workers.
+- Consistent with greater increase of farm expense on contract labor and modest increase of other ag service expense.
+
+```{r}
+#| fig-width: 10
+#| fig-height: 4
+d <- agser$ipath$rdc_dyn %>%
+  read_excel(
+    sheet = "emp_pay_wage_agg_by_year", 
+    skip = 3,
+    col_names = c("year", NA, NA, NA, NA, NA, "e941", NA, NA, "p941", NA, NA, "p943", NA, NA),
+    .name_repair = "unique_quiet") %>%
+  select(year, e941, p941, p943) %>%
+  filter(year >= 2002) %>%
+  mutate(p941 = p941 * 1000, p943 = p943 * 1000) %>%
+  pivot_longer(!year)
+
+
+d %>%
+  ggplot() +
+  geom_line(aes(year, value)) + 
+  scale_x_continuous(name = "", breaks = seq(2002, 2017, 5)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
+  facet_wrap(c("name"), nrow = 1, scales = "free_y") +
+  labs(title = "Employment and payroll (941 = non-ag, 943 = ag)")
+
+d %>%
+  arrange(year) %>%
+  mutate(value = value / first(value), .by = c(name)) %>%
+  ggplot() +
+  geom_line(aes(year, value)) +
+  scale_x_continuous(name = "", breaks = seq(2002, 2017, 5)) +
+  scale_y_continuous(name = "", limits = c(0.6, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale())) +
+  facet_wrap(c("name"), ncol = 3, scales = "fixed") +
+  labs(title = "Employment and payroll (941 = non-ag, 943 = ag), 2002 = 100%")
+
+```
+
+## county distribution
+
+- Most counties only have a few establishments and under $1m of total payroll.
+- Market concentration has not changed from 2002 to 2017.
+
+```{r}
+#| fig-width: 10
+#| fig-height: 3
+
+d <- rdc_2024$desc %>%
+  filter(commodity == "crop", variable %in% c("est", "pay", "pay_cr1"))
+
+yl <- list(est = c(0, 8), pay = c(0, 5000), pay_cr1 = c(0,1))
+ti <- list(est = "Establishments", pay = "Payroll", pay_cr1 = "Payroll share of largest est.")
+ps <- list()
+for (v in c("est", "pay", "pay_cr1")) {
+  p <- d %>%
+    filter(variable == v) %>%
+    ggplot(aes(x = year)) +
+    geom_boxplot(aes(lower = `25%`, upper = `75%`, middle = `50%`, ymin = `25%`, ymax = `75%`, group= year), stat = "identity", width = 2) +
+    geom_line(aes(y = mean)) +
+    geom_point(aes(y = mean)) +
+    scale_x_continuous(breaks = PAR$lbd_years) +
+    switch(
+      v,
+      est = scale_y_continuous(limits = yl[[v]], breaks = seq(0, 8, 2)),
+      pay = scale_y_continuous(
+        limits = yl[[v]], 
+        labels = scales::label_currency(scale = 1000, scale_cut = scales::cut_short_scale())),
+     pay_cr1 =  scale_y_continuous(limits = yl[[v]])
+    ) +
+    labs(title = ti[[v]], x = "", y = "")
+  ps[[v]] <- p
+}
+
+ps[["est"]] + ps[["pay"]] + ps[["pay_cr1"]]
+```
+
+# Regressions
+
+Do counties with larger presence of service providers (measured by payroll) have higher agricultural productivity?
+
+"Crop yield" is sales per acre. Corn, wheat and soy are production per acre.
+
+## static productivity
+
+Regression model:
+```
+logyield ~ logpay * (logland + logavgland) + hhi_land
+```
+
+### all crops, sales per acre, 2017
+
+- AgSer payroll elasticity = 0.2
+- Controlling for farmland size and distribution
+- Relationship is stronger in counties with more farmland and smaller farms
+
+```{r}
+models <- rdc_2024$static_yield %>%
+  filter(commodity == "crop", year == 2017)
+
+fits <- unique(models$model) %>%
+  map(\(l) filter(models, model == l))
+
+modelsummary(fits, output = "huxtable")
+
+```
+
+
+### logpay coef by commodity-year
+
+- Strongest effect for total crop productivity
+- Weaker, but positive for corn and wheat
+- Weakest for soybeans
+
+```{r}
+models <- rdc_2024$static_yield %>%
+  filter(model == "logyield ~ logpay + logland + logavgland + hhi_land",
+         term == "logpay") %>%
+  rename(label = sample_label)
+
+models %>%
+  left_join(models %>% tidy() %>% select(label, conf.low, conf.high),
+            by = "label") %>%
+  ggplot(aes(year)) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = commodity), alpha = 0.2) +
+  geom_line(aes(y = estimate, color = commodity)) +
+  scale_x_continuous(breaks = PAR$lbd_years)
+
+
+```
+
+
+### interacted ME
+
+Land interaction: Positive effect on productivity is amplified in larger counties for all except corn.
+
+Average land interaction: For crops, positive effect on productivity is amplified in counties with smaller average land (more farms).
+
+```{r}
+# model equation:
+# logyield ~ b0 + b1 logpay + b2 logpay*logland + b3 logland + b4 logpay*logavgland + b5 logavgland
+# marinal effect:
+# d(logyield) / d(logpay) = b1 + b2 * logland + b4 * logavgland
+
+df <- rdc_2024$static_yield %>%
+  filter(model == "logyield ~ logpay * (logland + logavgland) + hhi_land",
+         str_detect(term, "logpay")) %>%
+  select(commodity, year, sample_label, term, estimate) %>%
+  pivot_wider(id_cols = c(commodity, year, sample_label), names_from = term, values_from = estimate) %>%
+  rename_with(\(x) str_replace(x, ":", "_")) %>%
+  left_join(
+    rdc_2024$desc %>%
+      select(sample_label, variable, "25%", "50%", "75%") %>%
+      filter(variable %in% c("land", "avgland")) %>%
+      mutate(variable = paste0("log", variable),
+             across(c("25%", "50%", "75%"), log)) %>%
+      pivot_wider(id_cols = sample_label, names_from = variable, values_from = c("25%", "50%", "75%"), names_glue = "{variable}_{.value}") %>%
+      rename_with(\(x) str_sub(x, 1, -2), .cols = ends_with("%")),
+    by = "sample_label") %>%
+  mutate(
+    dydx_logland_25 = logpay + logpay_logland * logland_25 + logpay_logavgland * logavgland_50,
+    dydx_logland_75 = logpay + logpay_logland * logland_75 + logpay_logavgland * logavgland_50,
+    dydx_logavgland_25 = logpay + logpay_logland * logland_50 + logpay_logavgland * logavgland_25,
+    dydx_logavgland_75 = logpay + logpay_logland * logland_50 + logpay_logavgland * logavgland_75
+  )
+
+d <- df %>%
+  select(commodity, year, starts_with("dydx_")) %>%
+  pivot_longer(!c(commodity, year), names_pattern = "dydx_(.+)_(..)", names_to = c("atvar", "atval")) %>%
+  mutate(atval = paste0(atval, "%"))
+  
+d %>%
+  filter(atvar == "logland") %>%
+  rename(land = atval) %>%
+  ggplot() +
+  geom_line(aes(year, value, color = land)) +
+  facet_wrap("commodity", scale = "free_y") +
+  geom_hline(aes(yintercept = 0), linetype = 2) +
+  scale_x_continuous(breaks = PAR$lbd_years) +
+  ylab("marginal effect of logpay")
+
+
+d %>%
+  filter(atvar == "logavgland") %>%
+  rename(avg_land = atval) %>%
+  ggplot() +
+  geom_line(aes(year, value, color = avg_land)) +
+  facet_wrap("commodity", scale = "free_y") +
+  geom_hline(aes(yintercept = 0), linetype = 2) +
+  scale_x_continuous(breaks = PAR$lbd_years) +
+  ylab("marginal effect of logpay")
+
+
+```
+
+## productivity growth
+
+Regression model (`diff_logyield = logyield(y+5) - logyield(y)`):
+
+```
+diff_logyield ~ logpay + logyield + logland + logavgland + hhi_land
+```
+
+- Counties with more AgSer payroll tend to have higher increases in productivity over the following 5 years.
+- Strongest effect in 2007.
+
+
+
+```{r}
+
+models <- rdc_2024$dynamic_yield %>%
+  mutate(label = paste0(commodity, "_", year), .before = 1)
+
+fits <- unique(models$label) %>%
+  set_names() %>%
+  map(\(l) filter(models, label == l))
+
+for (x in PAR$commodities) {
+  models %>%
+    filter(commodity == x) %>%
+    distinct(label) %>%
+    pull() %>%
+    `[`(fits, .) %>%
+    modelsummary(output = "huxtable") %>%
+    print()
+}
+
+```
