@@ -20,9 +20,12 @@ library(logger)
 library(tidyverse)
 library(tmap)
 library(tigris)
+library(sf)
 library(skimr)
 library(modelsummary)
 library(patchwork)
+
+theme_set(theme_minimal())
 
 
 log_threshold(WARN)
@@ -45,9 +48,92 @@ PAR <- list(
 rdc_2024 <- agser$get_rdc_res_2024()
 ```
 
-
-
 # Farm productivity
+
+## TFP
+
+```{r}
+df <- agser$data_tfp()
+
+# reproduce classic ERS figure for verification
+# https://www.ers.usda.gov/data-products/agricultural-productivity-in-the-united-states/summary-of-recent-findings
+df %>%
+  select(year, output, input, tfp) %>%
+  mutate(across(c(output, input, tfp), \(x) x / first(x))) %>%
+  pivot_longer(!year) %>%
+  ggplot() +
+  geom_line(aes(year, value, color = name))
+
+# 2002 = 100%
+df %>%
+  select(year, output, input, tfp) %>%
+  filter(year >= 2002) %>%
+  mutate(across(c(output, input, tfp), \(x) x / first(x))) %>%
+  pivot_longer(!year) %>%
+  ggplot() +
+  geom_line(aes(year, value, color = name))
+
+# input decomposition
+df %>%
+  select(year, capital, labor, int) %>%
+  mutate(across(c(capital, labor, int), \(x) x / first(x))) %>%
+  pivot_longer(!year) %>%
+  ggplot() +
+  geom_line(aes(year, value, color = name))
+
+# input decomposition, 2002 = 100%
+df %>%
+  select(year, capital, labor, int) %>%
+  filter(year >= 2002) %>%
+  mutate(across(c(capital, labor, int), \(x) x / first(x))) %>%
+  pivot_longer(!year) %>%
+  ggplot() +
+  geom_line(aes(year, value, color = name))
+
+
+# intermediates
+df %>%
+  select(year, starts_with("int_")) %>%
+  mutate(across(!year, \(x) x / first(x))) %>%
+  pivot_longer(!year) %>%
+  ggplot() +
+  geom_line(aes(year, value, color = name))
+
+# intermediates, no pesticide
+df %>%
+  select(year, starts_with("int_")) %>%
+  select(!int_pest) %>%
+  mutate(across(!year, \(x) x / first(x))) %>%
+  pivot_longer(!year) %>%
+  ggplot() +
+  geom_line(aes(year, value, color = name))
+
+# intermediates, 2002 = 100%
+df %>%
+  select(year, starts_with("int_")) %>%
+  filter(year >= 2002) %>%
+  mutate(across(!year, \(x) x / first(x))) %>%
+  pivot_longer(!year) %>%
+  ggplot() +
+  geom_line(aes(year, value, color = name))
+
+```
+
+### labor price index
+
+```{r}
+tibble(
+  year = 2002:2021,
+  # approximate Figure 2 from [@wang2025]
+  pidx_labcont = 1.03 ^ (year - 2002)
+) %>%
+  plot(type = "l")
+
+
+```
+
+
+## Land (partial-factor) productivity
 
 Aggregate national statistics from Census of Agriculture and BEA.
 
@@ -117,7 +203,6 @@ rdc_2024$desc %>%
 
 ```
 
-
 ## yield
 
 Varying dynamic across crop types, but yields generally increase.
@@ -153,6 +238,8 @@ d %>%
 
 # Farm expenses
 
+## Ag census
+
 Multiple categories relate to ag services.
 Contract labor expense likely also goes to providers.
 
@@ -183,9 +270,9 @@ tribble(
   mutate(short_desc = str_sub(short_desc, 1, -25))
 ```
 
-- All crop related expenses have been growing over time.
-- Ag services - at a very slow rate, +25% over 20 years.
-- Contract labor expenses - one of the fastest growths, nearly doubled.
+-   All crop related expenses have been growing over time.
+-   Ag services - at a very slow rate, +25% over 20 years.
+-   Contract labor expenses - one of the fastest growths, nearly doubled.
 
 ```{r}
 d <- df_farm %>%
@@ -213,8 +300,6 @@ d %>%
 
 ```
 
-
-
 ```{r}
 d <- df_farm %>%
   filter(str_starts(name, "exp_agser"), name != "exp_agser_anim")
@@ -239,12 +324,13 @@ d %>%
 
 ```
 
+## ARMS
 
+National Service Expenditures by Type of Production (crop vs animal), annual.
 
-## BEA expenses
+## BEA
 
 Use of intermediate inputs and compensation of employees by crop industries.
-
 
 ```{r}
 df_io <- agser$data_io() %>%
@@ -282,8 +368,8 @@ df_io %>%
   distinct(ind, ind_code, ind_name)
 ```
 
-- Ag service expenses grow faster than total intermediate expenses.
-- Much faster than "compensation of employees" - not clear if it includes contract labor.
+-   Ag service expenses grow faster than total intermediate expenses.
+-   Much faster than "compensation of employees" - not clear if it includes contract labor.
 
 ```{r}
 #| fig-width: 10
@@ -312,9 +398,7 @@ d %>%
 
 ```
 
-
 ## agser expenses by crop
-
 
 ```{r}
 #| fig-width: 10
@@ -385,7 +469,7 @@ BEA fixed asset accounts allow us to evaluate capital stock of ag service provid
 Although the industry is lumped with fishing forestry and fishing, we can look at equipment classes related to agriculture: "Farm tractors" and "Other agricultural machinery".
 
 An interesting patterns stands out.
-While farms roughly doubled stock of tractors and other machinery, providers stock of tractors was small and declining, but stock of other machinery increased tenfold. 
+While farms roughly doubled stock of tractors and other machinery, providers stock of tractors was small and declining, but stock of other machinery increased tenfold.
 
 ```{r}
 d <- pubdata::get("bea_fa", "det_nonres_stk-cc") %>%
@@ -414,13 +498,98 @@ d %>%
   labs(title = "Asset stock, 2002 = 100%")
 ```
 
+# Crop heterogeneity
+
+```{r}
+df_crop <- agser$data_farm("county") %>%
+  filter(year == 2017)
+df_geo <- tigris::counties(cb = TRUE, resolution = "20m", year = 2017) %>%
+  rename_with(tolower) %>%
+  rename(stcty = geoid) %>%
+  tigris::shift_geometry()
+```
+
+## map
+
+```{r}
+crops <- c("crop", "corn", "soy", "wheat", "veg", "fruit", "hort")
+df <- df_crop %>%
+  filter(name %in% paste0("sale_", crops)) %>%
+  mutate(share = value / first(if_else(name == "sale_crop", value, NA), na_rm = TRUE), .by = stcty)
+
+for (cr in crops[-1]) {
+  p <- df_geo %>%
+    left_join(df %>% filter(name == paste0("sale_", cr)) %>% select(!name), by = "stcty") %>%
+    tm_shape() +
+    tm_fill("share", col = NULL) +
+    tm_title(cr)
+  print(p)
+}
+
+```
+
+## expenditure shares
+
+```{r}
+crops <- c("crop", "corn", "soy", "wheat", "veg", "fruit", "hort")
+d1 <- df_crop %>%
+  filter(name %in% paste0("sale_", crops)) %>%
+  mutate(share = value / first(if_else(name == "sale_crop", value, NA), na_rm = TRUE), .by = stcty)
+
+exps <- c("tot", "seed", "fert", "chem", "labhire", "labcont", "fuel", "repair", "agser_rent", "agser_cust", "agser_other")
+d2 <- df_crop %>%
+  filter(name %in% paste0("exp_", exps)) %>%
+  mutate(share = value / first(if_else(name == "exp_tot", value, NA), na_rm = TRUE), .by = stcty)
+
+d <- bind_rows(d1, d2) %>%
+  filter(!name %in% c("sale_crop", "exp_tot")) %>%
+  pivot_wider(id_cols = stcty, values_from = "share") %>%
+  select(!stcty)
+
+pairs(d, pch = ".")
+cor(d, use = "pairwise.complete.obs")
+```
+
+## sales vs land
+
+```{r}
+crops <- c("crop", "corn", "soy", "wheat", "veg")
+df <- df_crop %>%
+  separate_wider_regex(name, c(var = ".+?", "_", com = ".+"), cols_remove = FALSE) %>%
+  filter(var %in% c("land", "sale"), com %in% crops) %>%
+  mutate(share = value / first(if_else(com == "crop", value, NA), na_rm = TRUE), .by = c(stcty, var))
+
+df %>%
+  pivot_wider(id_cols = c(stcty, com), names_from = var, values_from = value) %>%
+  mutate(productivity = sale / land) %>%
+  filter(is.finite(productivity)) %>%
+  summarize(
+    mean = mean(productivity),
+    sd = sd(productivity),
+    quantile(productivity) %>% as.list() %>% as_tibble(),
+    .by = com
+  )
+
+df %>%
+  filter(com != "crop") %>%
+  pivot_wider(id_cols = c(stcty, com), names_from = var, values_from = share) %>%
+  drop_na() %>%
+  ggplot() +
+  geom_point(aes(land, sale, color = com), size = 0.5)
+
+df %>%
+  pivot_wider(id_cols = c(stcty, com), names_from = var, values_from = value) %>%
+  mutate(productivity = sale / land)
+```
+
+
 # Service providers
 
 ## size
 
-- Steady employment and payroll of non-agricultural worksers.
-- Doubling payroll of agricultural workers.
-- Consistent with greater increase of farm expense on contract labor and modest increase of other ag service expense.
+-   Steady employment and payroll of non-agricultural worksers.
+-   Doubling payroll of agricultural workers.
+-   Consistent with greater increase of farm expense on contract labor and modest increase of other ag service expense.
 
 ```{r}
 #| fig-width: 10
@@ -459,8 +628,8 @@ d %>%
 
 ## county distribution
 
-- Most counties only have a few establishments and under $1m of total payroll.
-- Market concentration has not changed from 2002 to 2017.
+-   Most counties only have a few establishments and under \$1m of total payroll.
+-   Market concentration has not changed from 2002 to 2017.
 
 ```{r}
 #| fig-width: 10
@@ -495,24 +664,52 @@ for (v in c("est", "pay", "pay_cr1")) {
 ps[["est"]] + ps[["pay"]] + ps[["pay_cr1"]]
 ```
 
-# Regressions
+# Public data regressions
+
+
+```{r}
+df <- agser$data_farm("county")
+
+
+d <- df %>%
+  filter(name %in% c("land_crop", "sale_crop", "sale_fruit", "exp_tot", "exp_labhire", "exp_labcont")) %>%
+  pivot_wider(id_cols = c(year, stcty)) %>%
+  mutate(yield_crop = sale_crop / land_crop)
+
+d %>%
+  mutate(across(c("yield_crop", "land_crop", "sale_crop", "exp_tot", "exp_labhire", "exp_labcont"), log)) %>%
+  filter(year == 2017) %>%
+  lm("yield_crop ~ land_crop + exp_labhire + exp_labcont", data = .) %>%
+  summary()
+
+d1 <- d %>%
+  mutate(across(c("yield_crop", "land_crop", "sale_crop", "exp_tot", "exp_labhire", "exp_labcont"), log)) %>%
+  filter(year == 2017)
+lm("yield_crop ~ land_crop + exp_labhire + exp_labcont", data = d1, weights = d1$sale_crop) %>%
+  summary()
+```
+
+
+# LBD regressions
 
 Do counties with larger presence of service providers (measured by payroll) have higher agricultural productivity?
 
-"Crop yield" is sales per acre. Corn, wheat and soy are production per acre.
+"Crop yield" is sales per acre.
+Corn, wheat and soy are production per acre.
 
 ## static productivity
 
 Regression model:
-```
+
+```         
 logyield ~ logpay * (logland + logavgland) + hhi_land
 ```
 
 ### all crops, sales per acre, 2017
 
-- AgSer payroll elasticity = 0.2
-- Controlling for farmland size and distribution
-- Relationship is stronger in counties with more farmland and smaller farms
+-   AgSer payroll elasticity = 0.2
+-   Controlling for farmland size and distribution
+-   Relationship is stronger in counties with more farmland and smaller farms
 
 ```{r}
 models <- rdc_2024$static_yield %>%
@@ -525,12 +722,11 @@ modelsummary(fits, output = "huxtable")
 
 ```
 
-
 ### logpay coef by commodity-year
 
-- Strongest effect for total crop productivity
-- Weaker, but positive for corn and wheat
-- Weakest for soybeans
+-   Strongest effect for total crop productivity
+-   Weaker, but positive for corn and wheat
+-   Weakest for soybeans
 
 ```{r}
 models <- rdc_2024$static_yield %>%
@@ -548,7 +744,6 @@ models %>%
 
 
 ```
-
 
 ### interacted ME
 
@@ -617,14 +812,12 @@ d %>%
 
 Regression model (`diff_logyield = logyield(y+5) - logyield(y)`):
 
-```
+```         
 diff_logyield ~ logpay + logyield + logland + logavgland + hhi_land
 ```
 
-- Counties with more AgSer payroll tend to have higher increases in productivity over the following 5 years.
-- Strongest effect in 2007.
-
-
+-   Counties with more AgSer payroll tend to have higher increases in productivity over the following 5 years.
+-   Strongest effect in 2007.
 
 ```{r}
 

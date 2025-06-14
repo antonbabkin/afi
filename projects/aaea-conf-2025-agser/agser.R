@@ -12,11 +12,16 @@ library(readxl)
 
 # data ----
 
+ppath <- \(...) file.path("projects/aaea-conf-2025-agser", ...)
+
 ipath <- list(
   pubdata = Sys.getenv("PUBDATA_DIR"),
   rdc_dyn = file.path(Sys.getenv("RDC_RESULTS_DIR"), "20191101/results_disc.xlsx"),
   rdc_res_2024 = file.path(Sys.getenv("RDC_RESULTS_DIR"), "20240802.xlsx"),
-  price_index = file.path(Sys.getenv("RUREC_DIR"), "data/pubdata/bea_nipa/price_index.pq")
+  price_index = file.path(Sys.getenv("RUREC_DIR"), "data/pubdata/bea_nipa/price_index.pq"),
+  # https://www.ers.usda.gov/data-products/agricultural-productivity-in-the-united-states
+  # https://ers.usda.gov/sites/default/files/_laserfiche/DataFiles/47679/table01.xlsx?v=52122
+  tfp = ppath("data/tfp/table01.xlsx")
 )
 
 opath <- list(
@@ -30,16 +35,27 @@ pubdata_path <- function(path) {
   file.path(ipath$pubdata, path)
 }
 
-
+price_idx_base_year <- 2023
 df_price_idx <- ipath$price_index %>%
   read_parquet() %>%
   arrange(year) %>%
-  mutate(price_idx = gdp_price_index / last(gdp_price_index)) %>%
+  mutate(
+    base_idx = first(if_else(year == price_idx_base_year, gdp_price_index, NA), na_rm = TRUE),
+    price_idx = gdp_price_index / base_idx) %>%
   select(year, price_idx)
 
-deflate_dollars <- function(year, x) {
+deflate_dollars <- function(year, x, base_year = price_idx_base_year) {
+  if (base_year == price_idx_base_year) {
+    d <- df_price_idx
+  } else {
+    d <- df_price_idx %>%
+      mutate(
+        base_idx = first(if_else(year == base_year, price_idx, NA), na_rm = TRUE),
+        price_idx = price_idx / base_idx
+      )
+  }
   data.frame(year, x) %>%
-    left_join(df_price_idx, "year") %>%
+    left_join(d, "year") %>%
     mutate(y = x / price_idx) %>%
     pull(y)
 }
@@ -82,6 +98,25 @@ qcew <- function(year = NULL) {
 
 # farms ----
 
+data_tfp <- function() {
+  ipath$tfp %>%
+    read_excel(skip = 2, n_max = 74) %>%
+    rename(
+      year = Year,
+      output = "Total agricultural output",
+      input = "Farm inputs: Total", 
+      tfp = "Total factor productivity (TFP)",
+      capital = "Capital inputs: Total",
+      labor = "Labor inputs: Total",
+      int = "Intermediate inputs: Total",
+      int_feedseed = "Intermediate inputs: Feed and seed",
+      int_energy = "Intermediate inputs: Energy",
+      int_fert = "Intermediate inputs: Fertilizer and lime",
+      int_pest = "Intermediate inputs: Pesticides",
+      int_serv = "Intermediate inputs: Purchased services",
+      int_other = "Intermediate inputs: Other intermediate inputs"
+    )
+}
 
 data_farm <- function(geo = c("county", "state", "national")) {
   geo <- match.arg(geo)
@@ -89,7 +124,13 @@ data_farm <- function(geo = c("county", "state", "national")) {
   renames <- tribble(
     ~name,            ~short_desc,
     "sale_tot",        "COMMODITY TOTALS - SALES, MEASURED IN $", 
-    "sale_mean",       "COMMODITY TOTALS - SALES, MEASURED IN $ / OPERATION", 
+    "sale_mean",       "COMMODITY TOTALS - SALES, MEASURED IN $ / OPERATION",
+    "sale_corn",       "CORN - SALES, MEASURED IN $",
+    "sale_soy",        "SOYBEANS - SALES, MEASURED IN $",
+    "sale_wheat",      "WHEAT - SALES, MEASURED IN $",
+    "sale_veg",        "VEGETABLE TOTALS, INCL SEEDS & TRANSPLANTS, IN THE OPEN - SALES, MEASURED IN $",
+    "sale_fruit",      "FRUIT & TREE NUT TOTALS - SALES, MEASURED IN $",
+    "sale_hort",       "HORTICULTURE TOTALS, (EXCL CUT TREES & VEGETABLE SEEDS & TRANSPLANTS) - SALES, MEASURED IN $",
     "n_sale_crop",     "CROP TOTALS - OPERATIONS WITH SALES",
     "n_land_crop",     "AG LAND, CROPLAND, HARVESTED - NUMBER OF OPERATIONS",
     "n_land_corn",     "CORN, GRAIN - OPERATIONS WITH AREA HARVESTED",
@@ -101,6 +142,7 @@ data_farm <- function(geo = c("county", "state", "national")) {
     "land_corn",       "CORN, GRAIN - ACRES HARVESTED",
     "land_soy",        "SOYBEANS - ACRES HARVESTED",
     "land_wheat",      "WHEAT - ACRES HARVESTED",
+    "land_veg",        "VEGETABLE TOTALS, IN THE OPEN - ACRES HARVESTED",
     "prod_corn",       "CORN, GRAIN - PRODUCTION, MEASURED IN BU",
     "prod_soy",        "SOYBEANS - PRODUCTION, MEASURED IN BU",
     "prod_wheat",      "WHEAT - PRODUCTION, MEASURED IN BU",
@@ -146,7 +188,7 @@ if (FALSE) {
     filter(agg_level_desc == "COUNTY", domain_desc == "TOTAL") %>%
     distinct(short_desc) %>%
     collect() %>%
-    filter(str_detect(short_desc, "MACHINE")) %>%
+    filter(str_detect(short_desc, "FRUIT.*ACRE")) %>%
     pull(short_desc)
   
 }

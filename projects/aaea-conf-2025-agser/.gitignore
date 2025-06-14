@@ -1,1 +1,4 @@
 output/
+data/
+
+*.docx
