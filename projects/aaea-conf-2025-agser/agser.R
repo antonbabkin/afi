@@ -25,7 +25,7 @@ ipath <- list(
 )
 
 opath <- list(
-
+  paper = ppath("paper.rds")
 )
 
 # pubdata ----
@@ -96,7 +96,7 @@ qcew <- function(year = NULL) {
     open_dataset()
 }
 
-# farms ----
+# Census of agriculture ----
 
 data_tfp <- function() {
   ipath$tfp %>%
@@ -194,13 +194,14 @@ if (FALSE) {
 }
 
 
-# BEA I-O ----
+# BEA ----
+
 data_io <- function() {
   df <- list()
   # https://www.bea.gov/industry/historical-benchmark-input-output-tables
   # https://apps.bea.gov/industry/zip/2002detail.zip
   d <- read_fwf(
-    "projects/aaea-conf-2025-agser/2002detail/REV_NAICSUseDetail 4-24-08.txt",
+    ppath("data/2002detail/REV_NAICSUseDetail 4-24-08.txt"),
     col_positions = fwf_cols(com_code = c(1,6), com_name = c(11, 99), ind_code = c(101, 106), ind_name = c(111, 197), pur_val = c(301, 310)),
     col_types = cols(com_code = "c", com_name = "c", ind_code = "c", ind_name = "c", pur_val = "n"),
     skip = 1,
@@ -266,6 +267,18 @@ data_io <- function() {
 }
 
 
+data_fa <- function() {
+  pubdata::get("bea_fa", "det_nonres_stk-cc") %>%
+    filter(year %in% 2002:2022, asset_code %in% c("EO30", "EO21"), ind_code %in% c("110C", "113F")) %>%
+    mutate(value = 1e6 * deflate_dollars(year, value)) %>%
+    mutate(asset = case_match(asset_code, "EO30" ~ "other ag machine", "EO21" ~ "tractors")) %>%
+    mutate(industry = case_match(ind_code, "110C" ~ "farms", "113F" ~ "forest, fish and serv")) %>%
+    select(year, industry, asset, value) %>%
+    arrange(industry, asset, year) %>%
+    mutate(value_norm = value / first(value), .by = c(industry, asset))
+}
+
+
 # QCEW agser ----
 
 data_agser <- function() {
@@ -286,7 +299,34 @@ data_agser <- function() {
 
 # RDC results ----
 
-get_rdc_res_2024 <- function() {
+rdc_res_2019 <- function() {
+  d1 <- ipath$rdc_dyn %>%
+    read_excel(sheet = "count_by_year") %>%
+    mutate(across(everything(), as.integer)) %>%
+    select(year = yr, birth = sumu_birth, cont = sumu_cont, death = sumu_predeath, est = s_ptot)
+  
+  # disclosure was in real 2016 (?) dollars, use deflator to convert to year consistent with other datasets
+  price_deflator <- df_price_idx %>%
+    filter(year == 2016) %>%
+    pull(price_idx)
+  d2 <- ipath$rdc_dyn %>%
+    read_excel(
+      sheet = "emp_pay_wage_agg_by_year", 
+      skip = 3,
+      col_names = c("year", 
+                    "emp1_mean", "emp1_std", "emp1_sum", 
+                    "empa_mean", "empa_std", "empa_sum",
+                    "p941_mean", "p941_std", "p941_sum",
+                    "p943_mean", "p943_std", "p943_sum",
+                    "wage_mean", "wage_wmean"),
+      .name_repair = "unique_quiet") %>%
+    mutate(across(
+      c(starts_with("p941"), starts_with("p943"), starts_with("wage")),
+      \(x) 1000 * x / price_deflator))
+  inner_join(d1, d2, "year")
+}
+
+rdc_res_2024 <- function() {
   numeric_cols <- c("year", "nobs", "mean", "sd", "25%", "50%", "75%", "r.squared", "estimate", "std.error", "covariance")
   excel_sheets(ipath$rdc_res_2024) %>%
     set_names() %>%

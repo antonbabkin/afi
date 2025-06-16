@@ -11,6 +11,8 @@ format:
     df-print: paged
 ---
 
+# top
+
 All dollars values are in real terms.
 
 ```{r}
@@ -39,14 +41,27 @@ glance.lmdf <- agser$glance.lmdf
 tidy.lmdf <- agser$tidy.lmdf
 
 
-
 PAR <- list(
   lbd_years = c(2002, 2007, 2012, 2017),
   commodities = c("crop", "corn", "soy", "wheat")
 )
 
-rdc_2024 <- agser$get_rdc_res_2024()
+
 ```
+
+## data
+
+```{r}
+
+rdc_2019 <- agser$rdc_res_2019()
+rdc_2024 <- agser$rdc_res_2024()
+
+paperdata <- list()
+
+# saveRDS(paperdata, agser$opath$paper)
+
+```
+
 
 # Farm productivity
 
@@ -54,6 +69,13 @@ rdc_2024 <- agser$get_rdc_res_2024()
 
 ```{r}
 df <- agser$data_tfp()
+
+# 2002 = 100%
+paperdata$tfp <- d <- df %>%
+  select(year, output, input, tfp, capital, labor, starts_with("int")) %>%
+  filter(year >= 2002) %>%
+  mutate(across(!year, \(x) x / first(x))) %>%
+  pivot_longer(!year)
 
 # reproduce classic ERS figure for verification
 # https://www.ers.usda.gov/data-products/agricultural-productivity-in-the-united-states/summary-of-recent-findings
@@ -64,12 +86,8 @@ df %>%
   ggplot() +
   geom_line(aes(year, value, color = name))
 
-# 2002 = 100%
-df %>%
-  select(year, output, input, tfp) %>%
-  filter(year >= 2002) %>%
-  mutate(across(c(output, input, tfp), \(x) x / first(x))) %>%
-  pivot_longer(!year) %>%
+d %>%
+  filter(name %in% c("output", "input", "tfp")) %>%
   ggplot() +
   geom_line(aes(year, value, color = name))
 
@@ -82,11 +100,8 @@ df %>%
   geom_line(aes(year, value, color = name))
 
 # input decomposition, 2002 = 100%
-df %>%
-  select(year, capital, labor, int) %>%
-  filter(year >= 2002) %>%
-  mutate(across(c(capital, labor, int), \(x) x / first(x))) %>%
-  pivot_longer(!year) %>%
+d %>%
+  filter(name %in% c("capital", "labor", "int")) %>%
   ggplot() +
   geom_line(aes(year, value, color = name))
 
@@ -109,11 +124,8 @@ df %>%
   geom_line(aes(year, value, color = name))
 
 # intermediates, 2002 = 100%
-df %>%
-  select(year, starts_with("int_")) %>%
-  filter(year >= 2002) %>%
-  mutate(across(!year, \(x) x / first(x))) %>%
-  pivot_longer(!year) %>%
+d %>%
+  filter(str_starts(name, "int_")) %>%
   ggplot() +
   geom_line(aes(year, value, color = name))
 
@@ -300,6 +312,9 @@ d %>%
 
 ```
 
+
+
+
 ```{r}
 d <- df_farm %>%
   filter(str_starts(name, "exp_agser"), name != "exp_agser_anim")
@@ -323,6 +338,31 @@ d %>%
   labs(title = "Ag services expenses, 2002 = 100%")
 
 ```
+
+### labor
+
+
+```{r}
+paperdata$exp_labor <- d <- df_farm %>%
+  filter(name %in% c("exp_labhire", "exp_labcont")) %>%
+  select(year, name, value) %>%
+  arrange(name, year) %>%
+  mutate(value_norm = value / first(value), .by = name)
+
+d %>%
+  ggplot() +
+  geom_line(aes(year, value, color = name)) +
+  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_currency(scale_cut = scales::cut_short_scale()))
+
+d %>%
+  ggplot() +
+  geom_line(aes(year, value_norm, color = name)) +
+  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  scale_y_continuous(name = "", limits = c(0.8, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale()))
+
+```
+
 
 ## ARMS
 
@@ -472,11 +512,7 @@ An interesting patterns stands out.
 While farms roughly doubled stock of tractors and other machinery, providers stock of tractors was small and declining, but stock of other machinery increased tenfold.
 
 ```{r}
-d <- pubdata::get("bea_fa", "det_nonres_stk-cc") %>%
-  filter(year %in% 2002:2022, asset_code %in% c("EO30", "EO21"), ind_code %in% c("110C", "113F")) %>%
-  mutate(value = value * 1e6) %>%
-  mutate(ass = case_match(asset_code, "EO30" ~ "other ag machine", "EO21" ~ "tractors") %>% ordered(c("tractors", "other ag machine"))) %>%
-  mutate(ind = case_match(ind_code, "110C" ~ "farms", "113F" ~ "forest, fish and serv"))
+paperdata$asset <- d <- agser$data_fa()
 
 
 d %>%
@@ -484,18 +520,25 @@ d %>%
   geom_line(aes(year, value)) + 
   scale_x_continuous(name = "", breaks = seq(2002, 2022, 5)) +
   scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_currency(scale_cut = scales::cut_short_scale())) +
-  facet_wrap(c("ass", "ind"), ncol = 2, scales = "free_y") +
+  facet_wrap(c("asset", "industry"), ncol = 2, scales = "free_y") +
   labs(title = "Asset stock")
 
 d %>%
-  arrange(ind_code, asset_code, year) %>%
-  mutate(value = value / first(value), .by = c(ind_code, asset_code)) %>%
   ggplot() +
-  geom_line(aes(year, value)) +
+  geom_line(aes(year, value_norm)) +
   scale_x_continuous(name = "", breaks = seq(2002, 2022, 5)) +
   scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale())) +
-  facet_wrap(c("ass", "ind"), ncol = 2, scales = "fixed") +
+  facet_wrap(c("asset", "industry"), ncol = 2, scales = "fixed") +
   labs(title = "Asset stock, 2002 = 100%")
+
+
+
+d %>%
+  ggplot() +
+  geom_line(aes(year, value_norm, color = asset, linetype = industry)) +
+  scale_x_continuous(name = "", breaks = seq(2002, 2022, 5)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale()))
+
 ```
 
 # Crop heterogeneity
@@ -594,17 +637,10 @@ df %>%
 ```{r}
 #| fig-width: 10
 #| fig-height: 4
-d <- agser$ipath$rdc_dyn %>%
-  read_excel(
-    sheet = "emp_pay_wage_agg_by_year", 
-    skip = 3,
-    col_names = c("year", NA, NA, NA, NA, NA, "e941", NA, NA, "p941", NA, NA, "p943", NA, NA),
-    .name_repair = "unique_quiet") %>%
-  select(year, e941, p941, p943) %>%
+d <- rdc_2019 %>%
+  select(year, e941 = emp1_sum, p941 = p941_sum, p943_sum) %>%
   filter(year >= 2002) %>%
-  mutate(p941 = p941 * 1000, p943 = p943 * 1000) %>%
   pivot_longer(!year)
-
 
 d %>%
   ggplot() +
@@ -623,6 +659,35 @@ d %>%
   scale_y_continuous(name = "", limits = c(0.6, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale())) +
   facet_wrap(c("name"), ncol = 3, scales = "fixed") +
   labs(title = "Employment and payroll (941 = non-ag, 943 = ag), 2002 = 100%")
+```
+
+
+```{r}
+paperdata$agser_size <- d <- rdc_2019 %>%
+  mutate(entry = birth / (birth + cont), exit = lag(death / (birth + cont))) %>%
+  filter(year >= 2002) %>%
+  select(year, est, entry, exit, pay_nonag = p941_sum, pay_ag = p943_sum) %>%
+  pivot_longer(!year)
+
+d %>%
+  filter(name == "est") %>%
+  ggplot() +
+  geom_line(aes(year, value)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_number(scale_cut = scales::cut_short_scale()))
+
+d %>%
+  filter(name %in% c("entry", "exit")) %>%
+  ggplot() +
+  geom_line(aes(year, value, color = name)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale()))
+
+
+d %>%
+  filter(name %in% c("pay_nonag", "pay_ag")) %>%
+  ggplot() +
+  geom_line(aes(year, value, color = name)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_currency(scale_cut = scales::cut_short_scale()))
+
 
 ```
 
