@@ -53,10 +53,11 @@ PAR <- list(
 
 ```{r}
 
+paperdata <- list()
+
 rdc_2019 <- agser$rdc_res_2019()
 rdc_2024 <- agser$rdc_res_2024()
 
-paperdata <- list()
 
 # saveRDS(paperdata, agser$opath$paper)
 
@@ -777,6 +778,8 @@ logyield ~ logpay * (logland + logavgland) + hhi_land
 -   Relationship is stronger in counties with more farmland and smaller farms
 
 ```{r}
+paperdata$reg_static <- rdc_2024$static_yield
+
 models <- rdc_2024$static_yield %>%
   filter(commodity == "crop", year == 2017)
 
@@ -810,11 +813,37 @@ models %>%
 
 ```
 
+
+
+
+
 ### interacted ME
 
 Land interaction: Positive effect on productivity is amplified in larger counties for all except corn.
 
 Average land interaction: For crops, positive effect on productivity is amplified in counties with smaller average land (more farms).
+
+
+```{r}
+models <- rdc_2024$static_yield %>%
+  filter(model == "logyield ~ logpay * (logland + logavgland) + hhi_land") %>%
+  mutate(label = paste0(commodity, "_", year), .before = 1)
+
+fits <- unique(models$label) %>%
+  set_names() %>%
+  map(\(l) filter(models, label == l))
+
+for (x in c("crop", "corn", "soy", "wheat")) {
+  models %>%
+    filter(commodity == x) %>%
+    distinct(label) %>%
+    pull() %>%
+    `[`(fits, .) %>%
+    modelsummary(output = "huxtable") %>%
+    print()
+}
+```
+
 
 ```{r}
 # model equation:
@@ -822,6 +851,56 @@ Average land interaction: For crops, positive effect on productivity is amplifie
 # marinal effect:
 # d(logyield) / d(logpay) = b1 + b2 * logland + b4 * logavgland
 
+d_coef <- rdc_2024$static_yield %>% 
+  filter(model == "logyield ~ logpay * (logland + logavgland) + hhi_land", str_detect(term, "logpay")) %>%
+  pivot_wider(id_cols = c(year, commodity), names_from = term, values_from = estimate)
+
+d_land <- agser$data_farm("county") %>%
+  separate_wider_regex(name, c(measure = ".+", "_", commodity = ".+")) %>%
+  filter(year <= 2017, measure %in% c("land", "n_land"), commodity %in% c("crop", "corn", "soy", "wheat")) %>%
+  pivot_wider(id_cols = c(year, commodity, stcty), names_from = measure) %>%
+  mutate(avgland = land / n_land) %>%
+  mutate(logland = log(land), logavgland = log(avgland))
+
+d_me <- inner_join(d_coef, d_land, by = c("year", "commodity")) %>%
+  mutate(me = logpay + `logpay:logland` * logland + `logpay:logavgland` * logavgland)
+```
+
+
+```{r}
+f <- list(yr = 2012, com = "wheat")
+
+d_coef %>%
+  filter(year == f$yr, commodity == f$com)
+
+d_me %>%
+  filter(year == f$yr, commodity == f$com) %>%
+  ggplot() +
+  geom_point(aes(logland, me))
+
+d_me %>%
+  filter(year == f$yr, commodity == f$com) %>%
+  ggplot() +
+  geom_point(aes(logavgland, me))
+  
+d_me %>%
+  filter(year == f$yr, commodity == f$com) %>%
+  ggplot() +
+  geom_point(aes(logland, logavgland, color = me)) +
+  scale_color_gradient(low = "blue", high = "green")
+
+
+d_me %>%
+  filter(commodity != "crop") %>%
+  ggplot() +
+  geom_point(aes(logland, logavgland, color = me)) +
+  scale_color_gradient(low = "#5e3c99", high = "#e66101") +
+  facet_wrap(c("commodity", "year"))
+
+```
+
+
+```{r}
 df <- rdc_2024$static_yield %>%
   filter(model == "logyield ~ logpay * (logland + logavgland) + hhi_land",
          str_detect(term, "logpay")) %>%
@@ -844,7 +923,7 @@ df <- rdc_2024$static_yield %>%
     dydx_logavgland_75 = logpay + logpay_logland * logland_50 + logpay_logavgland * logavgland_75
   )
 
-d <- df %>%
+paperdata$reg_me <- d <- df %>%
   select(commodity, year, starts_with("dydx_")) %>%
   pivot_longer(!c(commodity, year), names_pattern = "dydx_(.+)_(..)", names_to = c("atvar", "atval")) %>%
   mutate(atval = paste0(atval, "%"))
@@ -885,6 +964,8 @@ diff_logyield ~ logpay + logyield + logland + logavgland + hhi_land
 -   Strongest effect in 2007.
 
 ```{r}
+
+paperdata$reg_dynamic <- rdc_2024$dynamic_yield
 
 models <- rdc_2024$dynamic_yield %>%
   mutate(label = paste0(commodity, "_", year), .before = 1)

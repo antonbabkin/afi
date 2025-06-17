@@ -1,6 +1,6 @@
 ---
 title: "Vertical Disintegration and the Shifting Boundary of the Farm Business: Implications for Agricultural Productivity and Market Structure"
-execute: 
+execute:
   echo: false
 format:
   html:
@@ -8,16 +8,21 @@ format:
     toc-depth: 2
     embed-resources: true
     page-layout: full
+    df-print: paged
 bibliography: references.bib
 ---
 
 ```{r}
 #| output: false
 library(tidyverse)
+library(modelsummary)
 
 theme_set(theme_minimal())
 
 source("projects/aaea-conf-2025-agser/agser.R", local = (agser <- new.env()))
+glance.lmdf <- agser$glance.lmdf
+tidy.lmdf <- agser$tidy.lmdf
+
 
 paperdata <- readRDS(agser$opath$paper)
 ```
@@ -131,7 +136,7 @@ paperdata$tfp %>%
 
 Decomposition of labor expenditures into hired and contract is not available in the published agricultural productivity accounts, but it is informative to consider spending reported in the Census of Agriculture, deflated to 2023 dollars using the GDP price index (@fig-exp-labor).
 Contract labor expenditures grew by %88 from 2002 to 2022 in real terms, double of the %44 growth rate of farm spending on hired labor, strongly indicating a shift towards the use of specialized labor service providers.
-It should be noted that these trends are not directly comparable to an approximately 10% drop in the quality-adjusted labor use shown in \[@fig-tfp-2\], primarily because the latter series is deflated using a quality-adjusted wage index which outpaced the general price growth rate reflected in the GDP price index.
+It should be noted that these trends are not directly comparable to an approximately 10% drop in the quality-adjusted labor use shown in [@fig-tfp-2], primarily because the latter series is deflated using a quality-adjusted wage index which outpaced the general price growth rate reflected in the GDP price index.
 
 ```{r}
 #| label: fig-exp-labor
@@ -213,7 +218,10 @@ While service providers hold a smaller stock in dollar terms, over the 20 years 
 If in 2002 service providers held only 4.4% of the combined stock of other agricultural machinery, by 2022 this share has grown to 17.2%.
 The difference in this trend compared to that of tractors - a more general purpose machinery - is consistent with the narrative of service providers focusing on more specialized processes required a more specialized type of asset.
 
-Employment and payroll dynamics of the agricultural services provider sector has been documented in [@babkin2022], with relevant findings replicated in [@fig-agser-dynamics]. While the number of active establishments was under 10,000 and slowly decreasing over time with exit rates exceeding entry, the sector demonstrated steady growth of scale as measured by the total real payroll. Establishment level dataset (Longitudinal Business Database) used to construct these statistics is assembled from administrative IRS records, which report payroll to agricultural and non-agricultural workers separately. Consistent with the growth of farm expenditures on contract labor shown in [@fig-exp-labor], total payroll of agricultural workers employed by service providers has approximately doubled over the observed period.
+Employment and payroll dynamics of the agricultural services provider sector has been documented in [@babkin2022], with relevant findings replicated in [@fig-agser-dynamics].
+While the number of active establishments was under 10,000 and slowly decreasing over time with exit rates exceeding entry, the sector demonstrated steady growth of scale as measured by the total real payroll.
+Establishment level dataset (Longitudinal Business Database) used to construct these statistics is assembled from administrative IRS records, which report payroll to agricultural and non-agricultural workers separately.
+Consistent with the growth of farm expenditures on contract labor shown in [@fig-exp-labor], total payroll of agricultural workers employed by service providers has approximately doubled over the observed period.
 Payroll of non-agricultural workers remained mostly flat, more in line with the pattern of farm spending on other agricultural services.
 
 ```{r}
@@ -268,25 +276,155 @@ LBD: county aggregation
 
 Regression
 
+
+$$
+Productivity = Payroll + Land + AvgLand + LandHHI 
+$$ {#eq-reg-static}
+
+
+
+$$
+Productivity = Payroll + Land + Payroll * Land + AvgLand + Payroll * AvgLand + LandHHI 
+$$ {#eq-reg-static-int}
+
+
+
+$$
+\Delta Productivity = Productivity + Payroll + Land + AvgLand + LandHHI 
+$$ {#eq-reg-dynamic}
+
+
+
 # 4. Results
 
 ## Descriptive analysis
 
-Produce stylized facts using novel micro data.
+
 Limitations of publicly available data (QCEW).
+
+Produce stylized facts using novel micro data.
+
 New measures possible: market structure of local providers.
 
 ## Regression analysis
 
-```         
-logyield ~ logpay + logland + logavgland + hhi_land
-logyield ~ logpay * (logland + logavgland) + hhi_land
+Regression results for the estimation of the model in [@eq-reg-static-int] for all-crop sample in 2017 are presented in \[@tbl-reg-static-crop\].
+Coefficients of lesser interest have been suppressed for confidentiality disclosure avoidance, showing only the sign and statistical significance.
+This model shows there is a positive and statistically significant relationship between farm crop productivity and total payroll of the service providers operating in a county, and this effect persist controlling for land distribution variables.
+A 1% increase in the payroll size of the services sector is associated with a 0.2% increase in crop sales per acre of harvested land.
+We interpret this as an evidence of the positive impact of availability of service providers on farm productivity.
+The effect is stronger in counties with more total acreage and smaller average farm size, consistent with a story of service providers becoming more effective when serving many small farms at scale.
+
+```{r}
+#| label: tbl-reg-static-crop
+#| tbl-cap: "Regression of crop sales per acre on service provider payroll, 2017."
+
+models <- paperdata$reg_static %>%
+  filter(commodity == "crop", year == 2017)
+
+fits <- unique(models$model) %>%
+  map(\(l) filter(models, model == l))
+
+modelsummary(fits, output = "huxtable")
 ```
 
-positive correlation crop heterogeneity Strongest effect for total crop productivity possibly driven by contract labor in counties dominated by labor-intensive crops Weaker, but positive for corn and wheat Weakest for soybeans farm size heterogeneity Land interaction: Positive effect on productivity is amplified in larger counties for all except corn.
-Average land interaction: For crops, positive effect on productivity is amplified in counties with smaller average land (more farms).
+The advantage of using dollar crop sales per acre as the measure of agricultural land productivity is the ability to aggregate all crop production into a single number.
+But it comes at a cost of obscuring the variation of productivity and its responsiveness to availability of service providers across different crop categories.
+In particular, vegetables, fruits and horticulture tend to return higher sales per acre than grains while also being more labor intensive to grow.
+Since our measure of service provider size - payroll to employees - most directly reflects the labor component of support activity, counties with sales dominated by vegetables, fruits and horticulture are more likely to have service providers with high payrolls regardless of farm productivity, leading to an upward bias in the estimated coefficient.
+As we do not observe in the data which crops service providers are involved with, our approach to address this issue is to look at yields of three major homogeneous grain crops - corn, soybeans and wheat - measured in bushels per acre and to restrict the samples to counties with positive production of respective crops.
+In a symmetric fashion, this approach would attenuate the coefficient of interest because the payroll is potentially affecting productivity of commodities other than the one which yield is being used as the outcome in the model.
+Measuring output in bushels instead of dollars also avoids the issue of unobserved unit price variation.
 
-Land results Counterfactuals: two counties with different land distribution, total effect and avg/hhi parts.
+[@tbl-reg-static-com] presents payroll coefficients for the static productivity model without interaction estimated over corn, soybeans and wheat samples in 2002, 2007, 2012 and 2017.
+A 1\% increase in agricultural service payroll is associated with a 0.02-0.06, 0.01-0.03 and 0.02-0.05 percent increase in corn, soybeans and wheat yields, respectively.
+While the magnitude of these estimates is smaller than in the sales-per-acre model, they are always statistically significant and likely underestimated as discussed above.
+
+```{r}
+#| eval: true
+#| label: tbl-reg-static-com
+#| tbl-cap: "Payroll coefficient estimates"
+
+models <- paperdata$reg_static %>%
+  filter(model == "logyield ~ logpay + logland + logavgland + hhi_land",
+         term == "logpay",
+         commodity %in% c("corn", "soy", "wheat"))
+
+models %>%
+  mutate(value = paste0(round(estimate, 3), significance, " (", round(std.error, 3), ")")) %>%
+  pivot_wider(id_cols = year, names_from = commodity) %>%
+  datasummary_df(fmt = 0)
+
+
+```
+
+
+The effect of the service payroll on yields varies by the distribution of harvested land, as identified by the interaction terms in [@eq-reg-static-int]. Full set of estimates are reported in the Appendix Table ... <!--# TODO: add the table --->, and for easier interpretation, [@fig-me] shows marginal effects of payroll evaluated at high and low quartiles of the respective land variables. Large magnitudes of variation of the marginal effect across time and commodities suggest that heterogeneity might be present, but statistical significance of the estimates is generally low, and no strong patterns emerge. 
+
+```{r}
+#| label: fig-me
+#| fig-cap: "Marginal effect of payroll on yield"
+#| fig-subcap:
+#|   - "At different levels of land"
+#|   - "At different levels of average land"
+#| layout-nrow: 2
+#| fig-asp: 0.4
+
+paperdata$reg_me %>%
+  filter(commodity != "crop", atvar == "logland") %>%
+  rename(land = atval) %>%
+  ggplot() +
+  geom_line(aes(year, value, color = land)) +
+  facet_wrap("commodity", scale = "free_y", nrow = 1) +
+  geom_hline(aes(yintercept = 0), linetype = 2) +
+  scale_y_continuous(name = "") +
+  scale_x_continuous(name = "", breaks = seq(2002, 2017, 5)) +
+  theme(legend.position = "inside", legend.justification = c(0, 1), legend.position.inside = c(0, 1))
+
+
+paperdata$reg_me %>%
+  filter(commodity != "crop", atvar == "logavgland") %>%
+  rename(avgland = atval) %>%
+  ggplot() +
+  geom_line(aes(year, value, color = avgland)) +
+  facet_wrap("commodity", scale = "free_y", nrow = 1) +
+  geom_hline(aes(yintercept = 0), linetype = 2) +
+  scale_y_continuous(name = "") +
+  scale_x_continuous(name = "", breaks = seq(2002, 2017, 5)) +
+  theme(legend.position = "inside", legend.justification = c(0, 1), legend.position.inside = c(0, 1))
+
+```
+
+
+
+We recognize that the cross-sectional estimates presented here are possibly subject to endogeneity bias.
+While productivity enhancing effect of agricultural service provider availability is a reasonable explanation for the observed positive relationship, the effect might go in the opposite or, more likely, in both directions:
+The most productive farms are more dynamic and innovative, and create demand for specialized service providers to appear in their local markets.
+In this study, we begin to untangle this relationship by analysing the dynamic response of farm yields to provider availability.
+Model presented in [@eq-reg-dynamic] evaluates whether counties with more agricultural provider activity demonstrated higher growth rate in yields over the subsequent five year period.
+<!--# TODO: explain why we control for base year productivity in these regressions -->
+Payroll coefficient estimates are collected in [@tbl-reg-dynamic].
+All statistically significant coefficients in these models are positive, supporting the hypothesis that agricultural service providers increase farm productivity.
+To illustrate with the largest coefficient, crop-growing counties that had a 1\% larger service sector experienced a 0.05\% growth rate in corn yields.
+
+```{r}
+#| eval: true
+#| label: tbl-reg-dynamic
+#| tbl-cap: Payroll coefficient estimates
+
+models <- paperdata$reg_dynamic %>%
+  filter(model == "diff_logyield ~ logpay + logyield + logland + logavgland + hhi_land",
+         term == "logpay")
+
+models %>%
+  mutate(value = paste0(round(estimate, 3), replace_na(significance, ""), " (", round(std.error, 3), ")")) %>%
+  pivot_wider(id_cols = year, names_from = commodity) %>%
+  datasummary_df(fmt = 0)
+
+
+```
+
+
 
 # 5. Discussion
 
@@ -310,58 +448,3 @@ Leveraging the longitudinal nature of the LBD, we find that counties with higher
 ::: {#refs}
 :::
 
-# --- Archive
-
-# Background
-
-In this section, we present descriptive stylized facts about trends in farm productivity and expenditures, and the size of the NAICS-1151 sector since 2002.
-
-## Farm productivity
-
-Productivity accounting undertaken by the USDA ERS is the most accurate way to separate productivity improvements from changes in the quantity and quality of used inputs.
-
-Most recent labor quality adjustment methodology is presented in [@wang2022].
-"The average annual rates of labor productivity growth and total factor productivity growth would have been overstated by 13 percent and 8 percent, respectively, if labor quality changes were not accounted for in the measurement."
-
-Quality adjustment depends on the data being used to estimate the hedonic model.
-@wang2025 is a recent example of this for the labor input.
-"After considering the composition shift among demographic characteristics, task types, and other variables, the quality-adjusted wage rates increased by more than 2.5 times from 1990 to 2021 (Figure 2). The increasing rate is lower than the findings in Wang et al. (2022). The differences could be attributed to additional variables incorporated in this study that account for more composition changes among additional categories of crop farm types, task types, employment types, and so forth." [@wang2025, p. 16].
-
-Contract vs hired labor quality: see [@wang2025].
-"workers recruited by contractors tend to earn 20%–30% less than those hired directly by farmers", conditional on observed worker characteristics and type of performed work, and correcting for selection bias.
-This effect is of the greatest magnitude among all explanatory factors, similar to the premium for being a supervisor, and greater than premiums for college education, high-paying crop work or legal work authorization.
-
-"According to Models 3–10, workers with more farm experience, better proficiency in English, female workers, more educated workers, and authorized workers are less likely to be recruited by contractors and more likely to be hired directly by farm operators."
-
-This result indicates that farm labor employed through a specialized provider is indeed more productive.
-Thought experiment: Farmer needs to get a fixed amount of work done and can either hire directly or through provider.
-In equilibrium, the cost must be the same or even higher for provider if they also take over management responsibility from the farmer.
-Because contracted workers are paid 20-30% lower wage for the same qualification and crop than hired labor, it means that the fixed amount of work is ..?
-
-# Input quality adjustment
-
-## labor
-
-Non-adjusted vs quality adjusted price index.
-[@wang2025, p. 16].
-"The increasing rate is lower than the findings in Wang et al. (2022)."
-
-"If our purpose was to construct a quality-adjusted price index first, then we could replace all the quantity notations X in equation (4) with price notations Px. A quality-adjusted quantity estimate could then be retrieved using the total values deflated by the quality-adjusted price index." [@wang2024, p. 12].
-
-[@wang2024, p. 10] discuss the two methods used by ERS for quality adjustment: index number approach and hedonic method.
-Both methods are used to adjust for changes in quality depending on data availability.
-Index number (aka Törnqvist or Divisia) requires much more detailed and disaggregated data.
-
-Hedonic method is used to construct price index for contract labor expenditures, agricultural chemicals, land (state) Specifically the year dummy variable method (there are others, see [@triplett2006, p. 52] for details).
-Year dummy coefficient estimates become the index.
-"The coefficients of time dummies represent the quality-adjusted wage rates." [@wang2025, p. 6].
-
-Index number method is used for hired and unpaid labor, land (national).
-
-## capital
-
-TFP uses same price index for machine services as for farm-owned machines: "Purchased machine services substituted for own-capital input. Therefore, we constructed the implicit quantity of purchased machine services as the ratio of expenditures to an index of rental prices of agricultural machinery (i.e., farm tractors or agricultural machinery excluding tractors)." [@wang2024, p. 6].
-
-AHA!
-If [@wang2025] is the evidence that labor is more productive under contractors management, then machinery is likely more productive too.
-But if same index is used, we over-estimate TFP growth.
