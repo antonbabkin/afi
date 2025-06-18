@@ -9,6 +9,10 @@ format:
     embed-resources: true
     page-layout: full
     df-print: paged
+# a workaround for broken docx, see here https://github.com/quarto-dev/quarto-cli/issues/7321
+  # docx:
+  #   tbl-cap-location: bottom
+
 bibliography: references.bib
 ---
 
@@ -34,11 +38,11 @@ Higher productivity improves competitiveness in international commodity markets,
 In this paper we study the role played by specialized service providers in shaping agricultural productivity growth.
 
 One of the most robust stylized facts is the secular increase in farm total factor productivity (TFP).
-Since 1948, farm output nearly tripled while use of farm inputs has remained flat <!--# TODO: add reference to ERS productivity web page --> [@wang2024] .
+Since 1948, farm output nearly tripled while use of farm inputs has remained flat [@usda-ers2025; @wang2024].
 In practice, however, TFP is a residual—it is the increase in output that an aggregate production function specification is not directly measuring.
 Allocating the observed TFP growth to specific sources is therefore vitally important for the promulgation of effective agricultural policy.
 
-This growth has mainly been attributed to technological improvement, primarily fueled by R&D investments from public and private sectors (Alston et al. 2010; Huffman and Evenson 2006; Fuglie and Heisey 2007; Plastina and Fulginiti 2012; Wang et al. 2013) <!--# TODO: add to references -->, enhanced by public infrastructure, extension, and technology spillover from other sectors or neighboring regions (Alston et al. 2010; Huffman and Evenson 2006; Wang et al. 2012) <!--# TODO: add to references -->.
+This growth has mainly been attributed to technological improvement, primarily fueled by R&D investments from public and private sectors, enhanced by public infrastructure, extension, and technology spillover from other sectors or neighboring regions [@alston2010; @huffman2006; @fuglie2007; @plastina2012; @wang2013].
 
 These explanations may be incomplete, however, as they tend to ignore the evolving structure of agricultural production.
 It is well-documented that farms have undergone significant consolidation over the past century.
@@ -52,17 +56,17 @@ Although rates of entry have fallen substantially, large incumbent firms have te
 Furthermore, the real annual mean wage to nonagricultural workers employed in the sector has increased by nearly \$10,000 over the 1992-2016 period, indicating sizable growth in labor productivity.
 Nonetheless, standard measures of economic dynamism, a principal source of productivity growth, have all fallen, which may have implications for innovation and the long-term health of this industry and agricultural production more generally.
 
-Decomposition of farm input usage reveals that large reductions in use of land and labor have been offset by increases in capital and intermediate goods, the latter showing an increase of 134 percent from 1948 to 2015 <!--# TODO: update with more recent number -->(Wang, Nehring, and Mosheim 2018).
+Decomposition of farm input usage reveals that large reductions in use of land and labor have been offset by increases in capital and intermediate inputs, the latter showing an increase of 109 percent from 1948 to 2021 [@wang2024].
 Just as economies of scale may accrue to larger farms, support service providers may be able to increase capital intensity and adopt new technologies more quickly.
 By focusing on a narrowing set of production activities, service providers may also experience significant gains from specialization.
 It might well be that existing quality adjustments to the cost of intermediate inputs are underestimated.
 Specifically, returns to scale and specialization may make agricultural service providers more productive than farmers at on-farm production activities, increasing outputs while decreasing costs.
 
-A key component of modern agricultural productivity accounting is quality adjustment [@wang2024].
+A key component of modern agricultural productivity accounting is quality adjustment.
 TFP growth is calculated as the difference between the growth rates of output and inputs, and aggregation across different commodity and expenditure types necessitates the use of dollar denominated nominal quantities, which are in turn deflated to real terms using a combination of price indices.
 The price index is constructed to account both for relative price variation over time and geography for factors where quality does not change (e.g. energy) or quality measurement is not available (farm products), and for changes in quality coming from either intrinsic quality improvements (a pesticide becoming more potent) or substitution between different types (different education attainment of workers).
 The classic argument of @jorgenson1967 is that the estimate of TFP or “the measure of our ignorance” can be explained away by accurately accounting for changes in all the inputs, and by doing so we can better understand the sources rather than just the magnitude of growth.
-Indeed, input quality changes in labor, capital, and intermediate inputs explain 0.11, 0.04, and 0.04 percentage points, respectively, of the 1.46 percentage points of annual agricultural output growth [@wang2024, p. iii].
+Indeed, input quality changes in labor, capital, and intermediate inputs explain 0.11, 0.04, and 0.04 percentage points, respectively, of the 1.46 percentage points of annual agricultural output growth [@wang2024, p. 26].
 
 Depending on data availability, @wang2024 use two methods to calculate quality-adjusted price indices – hedonic and index number approach.
 The index number method requires detailed and disaggregated data on prices, quantities and composition of characteristics of a particular input.
@@ -83,8 +87,8 @@ Under this assumption, cost shares are equal to the corresponding output elastic
 In practice, however, product and input markets are often subject to varying degrees of market power on either side of the trade, introducing distortions to the calculation of quality adjusted quantities.
 For illustration, if agricultural service providers are increasing their trading power in the local markets over time, service price will be increasing over its marginal product, but for an econometrician estimating a hedonic price index this increase will be indistinguishable from an increase in the unobserved quality of service, leading to biases in the estimates of constant efficiency quantity and TFP.
 
-Considerable number of studies have explored both theoretically and empirically the role of market power of food manufacturers and retailers (Sexton 2013; Sheldon 2017; Smith and Thanassoulis 2015; Gaudin 2018; Ma et al. 2019; Sexton and Xia 2018) <!--# TODO: references -->.
-On the upstream side of the farm, the literature is much smaller and has been mostly focused on increasing market concentration of seeds and agricultural chemicals suppliers (MacDonald 2017; Fuglie et al. 2012; Hendrickson, Howard, and Constance 2017; Wilson and Dahl 2010) <!--# TODO: references -->.
+Considerable number of studies have explored both theoretically and empirically the role of market power of food manufacturers and retailers [@sexton2013; @sheldon2017; @smith2015; @gaudin2018; @ma2019; @sexton2018].
+On the upstream side of the farm, the literature is much smaller and has been mostly focused on increasing market concentration of seeds and agricultural chemicals suppliers [@macdonald2017; @fuglie2012; @hendrickson2017; @wilson2010].
 Our paper offers new insights into the structure of the agricultural services market and paves the way for a more nuanced micro-level analysis of the effect of imperfectly competitive pricing on productivity growth accounting.
 
 This article also contributes to a large body of literature studying the questions of vertical disintegration in the context of outsourcing in manufacturing <!--# TODO: references -->.
@@ -276,29 +280,21 @@ LBD: county aggregation
 
 Regression
 
-
 $$
 Productivity = Payroll + Land + AvgLand + LandHHI 
 $$ {#eq-reg-static}
-
-
 
 $$
 Productivity = Payroll + Land + Payroll * Land + AvgLand + Payroll * AvgLand + LandHHI 
 $$ {#eq-reg-static-int}
 
-
-
 $$
 \Delta Productivity = Productivity + Payroll + Land + AvgLand + LandHHI 
 $$ {#eq-reg-dynamic}
 
-
-
 # 4. Results
 
 ## Descriptive analysis
-
 
 Limitations of publicly available data (QCEW).
 
@@ -308,7 +304,7 @@ New measures possible: market structure of local providers.
 
 ## Regression analysis
 
-Regression results for the estimation of the model in [@eq-reg-static-int] for all-crop sample in 2017 are presented in \[@tbl-reg-static-crop\].
+Regression results for the estimation of the model in [@eq-reg-static-int] for all-crop sample in 2017 are presented in [@tbl-reg-static-crop].
 Coefficients of lesser interest have been suppressed for confidentiality disclosure avoidance, showing only the sign and statistical significance.
 This model shows there is a positive and statistically significant relationship between farm crop productivity and total payroll of the service providers operating in a county, and this effect persist controlling for land distribution variables.
 A 1% increase in the payroll size of the services sector is associated with a 0.2% increase in crop sales per acre of harvested land.
@@ -337,7 +333,7 @@ In a symmetric fashion, this approach would attenuate the coefficient of interes
 Measuring output in bushels instead of dollars also avoids the issue of unobserved unit price variation.
 
 [@tbl-reg-static-com] presents payroll coefficients for the static productivity model without interaction estimated over corn, soybeans and wheat samples in 2002, 2007, 2012 and 2017.
-A 1\% increase in agricultural service payroll is associated with a 0.02-0.06, 0.01-0.03 and 0.02-0.05 percent increase in corn, soybeans and wheat yields, respectively.
+A 1% increase in agricultural service payroll is associated with a 0.02-0.06, 0.01-0.03 and 0.02-0.05 percent increase in corn, soybeans and wheat yields, respectively.
 While the magnitude of these estimates is smaller than in the sales-per-acre model, they are always statistically significant and likely underestimated as discussed above.
 
 ```{r}
@@ -358,8 +354,10 @@ models %>%
 
 ```
 
-
-The effect of the service payroll on yields varies by the distribution of harvested land, as identified by the interaction terms in [@eq-reg-static-int]. Full set of estimates are reported in the Appendix Table ... <!--# TODO: add the table --->, and for easier interpretation, [@fig-me] shows marginal effects of payroll evaluated at high and low quartiles of the respective land variables. Large magnitudes of variation of the marginal effect across time and commodities suggest that heterogeneity might be present, but statistical significance of the estimates is generally low, and no strong patterns emerge. 
+The effect of the service payroll on yields varies by the distribution of harvested land, as identified by the interaction terms in [@eq-reg-static-int].
+Full set of estimates are reported in the Appendix Table ...
+<!--# TODO: add the table --->, and for easier interpretation, [@fig-me] shows marginal effects of payroll evaluated at high and low quartiles of the respective land variables.
+Large magnitudes of variation of the marginal effect across time and commodities suggest that heterogeneity might be present, but statistical significance of the estimates is generally low, and no strong patterns emerge.
 
 ```{r}
 #| label: fig-me
@@ -395,17 +393,13 @@ paperdata$reg_me %>%
 
 ```
 
-
-
 We recognize that the cross-sectional estimates presented here are possibly subject to endogeneity bias.
-While productivity enhancing effect of agricultural service provider availability is a reasonable explanation for the observed positive relationship, the effect might go in the opposite or, more likely, in both directions:
-The most productive farms are more dynamic and innovative, and create demand for specialized service providers to appear in their local markets.
+While productivity enhancing effect of agricultural service provider availability is a reasonable explanation for the observed positive relationship, the effect might go in the opposite or, more likely, in both directions: The most productive farms are more dynamic and innovative, and create demand for specialized service providers to appear in their local markets.
 In this study, we begin to untangle this relationship by analysing the dynamic response of farm yields to provider availability.
 Model presented in [@eq-reg-dynamic] evaluates whether counties with more agricultural provider activity demonstrated higher growth rate in yields over the subsequent five year period.
-<!--# TODO: explain why we control for base year productivity in these regressions -->
-Payroll coefficient estimates are collected in [@tbl-reg-dynamic].
+<!--# TODO: explain why we control for base year productivity in these regressions --> Payroll coefficient estimates are collected in [@tbl-reg-dynamic].
 All statistically significant coefficients in these models are positive, supporting the hypothesis that agricultural service providers increase farm productivity.
-To illustrate with the largest coefficient, crop-growing counties that had a 1\% larger service sector experienced a 0.05\% growth rate in corn yields.
+To illustrate with the largest coefficient, crop-growing counties that had a 1% larger service sector experienced a 0.05% growth rate in corn yields.
 
 ```{r}
 #| eval: true
@@ -423,8 +417,6 @@ models %>%
 
 
 ```
-
-
 
 # 5. Discussion
 
@@ -447,4 +439,3 @@ Leveraging the longitudinal nature of the LBD, we find that counties with higher
 
 ::: {#refs}
 :::
-
