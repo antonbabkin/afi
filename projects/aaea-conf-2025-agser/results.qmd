@@ -364,6 +364,17 @@ d %>%
 
 ```
 
+### county suppression
+
+```{r}
+df <- agser$data_farm("county")
+
+df %>%
+  filter(name %in% c("exp_labcont", "exp_agser_cust")) %>%
+  count(name, year, value_f) %>%
+  pivot_wider(names_from = value_f, values_from = n)
+```
+
 
 ## ARMS
 
@@ -629,6 +640,44 @@ df %>%
 
 # Service providers
 
+## QCEW
+
+```{r}
+df_farm <- agser$data_farm("county") %>%
+  filter(year == 2012, name %in% c("land_crop", "sale_crop", "n_sale_crop")) %>%
+  pivot_wider(id_cols = stcty) %>%
+  rename(farms = n_sale_crop, land = land_crop, sales = sale_crop)
+
+df_qcew <- agser$qcew(2012) %>%
+  filter(agglvl_code %in% c("16", "76"), industry_code == "1151", own_code == "5") %>%
+  select(stcty = area_fips, disc = disclosure_code, establishments = annual_avg_estabs, employment = annual_avg_emplvl, payroll = total_annual_wages) %>%
+  collect() %>%
+  mutate(disc = if_else(is.na(disc), "published", "suppressed"))
+
+paperdata$qcew_sup <- d <- df_qcew %>%
+  filter(stcty != "US000") %>%
+  left_join(df_farm, by = "stcty") %>%
+  summarize(
+    counties = n(),
+    across(c(establishments, employment, payroll, farms, land, sales), \(x) sum(x, na.rm = TRUE)),
+    .by = disc) %>%
+  add_row(
+    disc = "total",
+    df_qcew %>% filter(stcty == "US000") %>% select(employment, payroll)
+  ) %>%
+  mutate(across(!disc, as.double)) %>%
+  pivot_longer(!disc) %>%
+  pivot_wider(id_cols = name, names_from = disc) %>%
+  mutate(
+    total = if_else(name %in% c("employment", "payroll"), total, suppressed + published),
+    suppressed = if_else(name %in% c("employment", "payroll"), total - published, suppressed),
+    pct_suppressed = 100 * suppressed / total
+  )
+
+d
+```
+
+
 ## size
 
 -   Steady employment and payroll of non-agricultural worksers.
@@ -701,8 +750,12 @@ d %>%
 #| fig-width: 10
 #| fig-height: 3
 
-d <- rdc_2024$desc %>%
+paperdata$agser_distr <- d <- rdc_2024$desc %>%
   filter(commodity == "crop", variable %in% c("est", "pay", "pay_cr1"))
+
+d %>%
+  select(variable, year, nobs, mean, sd, `25%`, `50%`, `75%`) %>%
+  arrange(variable, year)
 
 yl <- list(est = c(0, 8), pay = c(0, 5000), pay_cr1 = c(0,1))
 ti <- list(est = "Establishments", pay = "Payroll", pay_cr1 = "Payroll share of largest est.")

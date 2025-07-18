@@ -173,10 +173,10 @@ data_farm <- function(geo = c("county", "state", "national")) {
   agcensus() %>%
     filter(agg_level_desc == toupper(geo), domain_desc == "TOTAL", short_desc %in% renames$short_desc) %>%
     mutate(stcty = paste0(state_fips_code, county_code), .keep = "unused") %>%
-    select(year, stcty, short_desc, value) %>%
+    select(year, stcty, short_desc, value, value_f) %>%
     collect() %>%
     left_join(renames, "short_desc") %>%
-    relocate(year, stcty, name, value, short_desc) %>%
+    relocate(year, stcty, name, value, value_f, short_desc) %>%
     mutate(value = if_else(str_detect(name, "^(sale_|exp_)"), deflate_dollars(year, value), value)) %>%
     arrange(year, stcty)
   
