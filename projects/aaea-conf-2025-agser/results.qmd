@@ -25,13 +25,13 @@ library(tigris)
 library(sf)
 library(skimr)
 library(modelsummary)
+library(estimatr)
 library(patchwork)
 
 theme_set(theme_minimal())
 
 
 log_threshold(WARN)
-theme_set(theme_minimal())
 options(tigris_use_cache = TRUE)
 
 
@@ -47,19 +47,37 @@ PAR <- list(
 )
 
 
+
+venn <- function(x, y) {
+  and <- base::intersect(x, y)
+  or <- base::union(x, y)
+  list(
+    x = x,
+    y = y,
+    and = and,
+    or = or,
+    x_y = base::setdiff(x, y),
+    y_x = base::setdiff(y, x),
+    xor = base::setdiff(or, and)
+  )
+}
+
 ```
 
 ## data
 
 ```{r}
-
 paperdata <- list()
 
 rdc_2019 <- agser$rdc_res_2019()
 rdc_2024 <- agser$rdc_res_2024()
+```
 
 
-# saveRDS(paperdata, agser$opath$paper)
+```{r}
+#| eval: false
+ 
+saveRDS(paperdata, agser$opath$paper)
 
 ```
 
@@ -488,7 +506,6 @@ Did it move from farms to providers?
 
 ## Census
 
-More than doubled over 20 years.
 
 ```{r}
 #| fig-width: 10
@@ -551,7 +568,27 @@ d %>%
   scale_x_continuous(name = "", breaks = seq(2002, 2022, 5)) +
   scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale()))
 
+# tractors and machine combined
+d %>%
+  summarize(value = sum(value), .by = c(year, industry)) %>%
+  arrange(industry, year) %>%
+  mutate(value_norm = value / first(value), .by = industry) %>%
+  ggplot() +
+  geom_line(aes(year, value_norm, linetype = industry)) +
+  scale_x_continuous(name = "", breaks = seq(2002, 2022, 5)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale()))
+
+d %>%
+  summarize(value = sum(value), .by = c(year, industry)) %>%
+  arrange(industry, year) %>%
+  mutate(value_norm = value / first(value), .by = industry) %>%
+  filter(year == 2022)
+
 ```
+
+
+
+
 
 # Crop heterogeneity
 
@@ -642,21 +679,23 @@ df %>%
 
 ## QCEW
 
+
 ```{r}
 df_farm <- agser$data_farm("county") %>%
-  filter(year == 2012, name %in% c("land_crop", "sale_crop", "n_sale_crop")) %>%
+  filter(year == 2017, name %in% c("land_crop", "sale_crop", "n_sale_crop")) %>%
   pivot_wider(id_cols = stcty) %>%
   rename(farms = n_sale_crop, land = land_crop, sales = sale_crop)
 
-df_qcew <- agser$qcew(2012) %>%
-  filter(agglvl_code %in% c("16", "76"), industry_code == "1151", own_code == "5") %>%
+df_qcew <- agser$qcew() %>%
+  filter(year == 2017, agglvl_code %in% c("16", "76"), industry_code == "1151", own_code == "5") %>%
   select(stcty = area_fips, disc = disclosure_code, establishments = annual_avg_estabs, employment = annual_avg_emplvl, payroll = total_annual_wages) %>%
   collect() %>%
   mutate(disc = if_else(is.na(disc), "published", "suppressed"))
 
-paperdata$qcew_sup <- d <- df_qcew %>%
-  filter(stcty != "US000") %>%
-  left_join(df_farm, by = "stcty") %>%
+
+paperdata$qcew_sup <- d <- df_farm %>%
+  left_join(df_qcew, by = "stcty") %>%
+  mutate(disc = replace_na(disc, "no_agser")) %>%
   summarize(
     counties = n(),
     across(c(establishments, employment, payroll, farms, land, sales), \(x) sum(x, na.rm = TRUE)),
@@ -669,13 +708,17 @@ paperdata$qcew_sup <- d <- df_qcew %>%
   pivot_longer(!disc) %>%
   pivot_wider(id_cols = name, names_from = disc) %>%
   mutate(
-    total = if_else(name %in% c("employment", "payroll"), total, suppressed + published),
+    total = if_else(name %in% c("employment", "payroll"), total, no_agser + suppressed + published),
     suppressed = if_else(name %in% c("employment", "payroll"), total - published, suppressed),
-    pct_suppressed = 100 * suppressed / total
+    sh_suppressed = suppressed / total
   )
 
 d
 ```
+
+
+
+
 
 
 ## size
@@ -751,13 +794,14 @@ d %>%
 #| fig-height: 3
 
 paperdata$agser_distr <- d <- rdc_2024$desc %>%
-  filter(commodity == "crop", variable %in% c("est", "pay", "pay_cr1"))
+  filter(commodity == "crop", variable %in% c("est", "pay", "pay_cr1")) %>%
+  mutate(across(c(mean, sd, `25%`, `50%`, `75%`), \(x) if_else(variable == "pay", x * 1000, x)))
 
 d %>%
   select(variable, year, nobs, mean, sd, `25%`, `50%`, `75%`) %>%
   arrange(variable, year)
 
-yl <- list(est = c(0, 8), pay = c(0, 5000), pay_cr1 = c(0,1))
+yl <- list(est = c(0, 8), pay = c(0, 5e6), pay_cr1 = c(0,1))
 ti <- list(est = "Establishments", pay = "Payroll", pay_cr1 = "Payroll share of largest est.")
 ps <- list()
 for (v in c("est", "pay", "pay_cr1")) {
@@ -783,31 +827,190 @@ for (v in c("est", "pay", "pay_cr1")) {
 ps[["est"]] + ps[["pay"]] + ps[["pay_cr1"]]
 ```
 
+
+```{r}
+d %>%
+  filter(variable == "pay")  %>%
+    ggplot(aes(x = year)) +
+    geom_boxplot(aes(lower = `25%`, upper = `75%`, middle = `50%`, ymin = `25%`, ymax = `75%`, group= year), stat = "identity", width = 2) +
+    geom_line(aes(y = mean)) +
+    geom_point(aes(y = mean))
+```
+
+
 # Public data regressions
 
 
 ```{r}
 df <- agser$data_farm("county")
 
-
-d <- df %>%
-  filter(name %in% c("land_crop", "sale_crop", "sale_fruit", "exp_tot", "exp_labhire", "exp_labcont")) %>%
-  pivot_wider(id_cols = c(year, stcty)) %>%
-  mutate(yield_crop = sale_crop / land_crop)
-
-d %>%
-  mutate(across(c("yield_crop", "land_crop", "sale_crop", "exp_tot", "exp_labhire", "exp_labcont"), log)) %>%
-  filter(year == 2017) %>%
-  lm("yield_crop ~ land_crop + exp_labhire + exp_labcont", data = .) %>%
-  summary()
-
-d1 <- d %>%
-  mutate(across(c("yield_crop", "land_crop", "sale_crop", "exp_tot", "exp_labhire", "exp_labcont"), log)) %>%
-  filter(year == 2017)
-lm("yield_crop ~ land_crop + exp_labhire + exp_labcont", data = d1, weights = d1$sale_crop) %>%
-  summary()
 ```
 
+## crop
+
+```{r}
+df_reg <- df %>%
+  filter(name %in% c("land_crop", "sale_crop", "n_sale_crop", "exp_tot", "exp_labhire", "exp_labcont", "exp_agser_cust", "asset_mach")) %>%
+  pivot_wider(id_cols = c(year, stcty)) %>%
+  mutate(
+    yield_crop = if_else(land_crop > 0 & sale_crop > 0, sale_crop / land_crop, NA),
+    sh_labcont = exp_labcont / (exp_labhire + exp_labcont)
+  ) %>%
+  mutate(across(c("yield_crop", "land_crop", "exp_tot", "exp_labhire", "exp_labcont", "exp_agser_cust", "asset_mach"), \(x) log(x + 1)))
+
+
+result_reg <-
+  # create a table of estimation specification combinations
+  expand_grid(
+    year = seq(2002, 2022, 5)
+  ) %>%
+  # iterate over spec table rows, construct model formula and estimate
+  pmap(function(...) {
+    row <- list(...)
+    d <- df_reg %>%
+      filter(year == row$year)
+    f <- "yield_crop ~ land_crop + exp_tot + sh_labcont + asset_mach + exp_agser_cust"
+    # f <- "yield_crop ~ land_crop + exp_labhire + exp_labcont + exp_agser_cust"
+    m <- lm_robust(as.formula(f), data = d, weights = d$n_sale_crop)
+    # return single-row table with specs, formula and model object
+    tibble(..., formula = f, model = list(m))
+  }) %>%
+  bind_rows()
+
+
+result_reg$model %>%
+  set_names(result_reg$year) %>%
+  modelsummary(stars = TRUE, output = "huxtable")
+
+```
+
+## corn
+
+```{r}
+df_reg <- df %>%
+  filter(name %in% c("land_corn", "land_crop", "prod_corn", "n_land_corn", "exp_tot", "exp_labhire", "exp_labcont", "exp_agser_cust", "asset_mach")) %>%
+  pivot_wider(id_cols = c(year, stcty)) %>%
+  mutate(
+    yield_corn = if_else(land_corn > 0 & prod_corn > 0, prod_corn / land_corn, NA),
+    sh_labcont = exp_labcont / (exp_labhire + exp_labcont),
+    sh_land_corn = land_corn / land_crop
+  ) %>%
+  mutate(across(c("yield_corn", "land_corn", "exp_tot", "exp_labhire", "exp_labcont", "exp_agser_cust", "asset_mach", "prod_corn"), \(x) log(x + 1)))
+
+
+result_reg <-
+  # create a table of estimation specification combinations
+  expand_grid(
+    year = seq(2002, 2022, 5)
+  ) %>%
+  # iterate over spec table rows, construct model formula and estimate
+  pmap(function(...) {
+    row <- list(...)
+    d <- df_reg %>%
+      filter(year == row$year)
+    # f <- "land_corn ~ exp_labhire + exp_labcont + asset_mach + exp_agser_cust"
+    # f <- "yield_corn ~ land_corn + exp_labhire + exp_labcont + asset_mach + exp_agser_cust"
+    # f <- "yield_corn ~ land_corn + exp_tot + sh_labcont + asset_mach + exp_agser_cust"
+    # m <- lm_robust(as.formula(f), data = d, weights = d$n_land_corn)
+    m <- lm_robust(as.formula(f), data = d, weights = d$sh_land_corn)
+    # m <- lm_robust(as.formula(f), data = d)
+    # return single-row table with specs, formula and model object
+    tibble(..., formula = f, model = list(m))
+  }) %>%
+  bind_rows()
+
+
+result_reg$model %>%
+  set_names(result_reg$year) %>%
+  modelsummary(stars = TRUE, output = "huxtable")
+
+# state fixed effects
+# fixed panel of countieы
+# total output as outcome
+
+```
+
+
+
+## soy
+
+```{r}
+df_reg <- df %>%
+  filter(name %in% c("land_soy", "prod_soy", "n_land_soy", "exp_tot", "exp_labhire", "exp_labcont", "exp_agser_cust", "asset_mach")) %>%
+  pivot_wider(id_cols = c(year, stcty)) %>%
+  mutate(
+    yield_soy = if_else(land_soy > 0 & prod_soy > 0, prod_soy / land_soy, NA),
+    sh_labcont = exp_labcont / (exp_labhire + exp_labcont)
+  ) %>%
+  mutate(across(c("yield_soy", "land_soy", "exp_tot", "exp_labhire", "exp_labcont", "exp_agser_cust", "asset_mach"), \(x) log(x + 1)))
+
+
+result_reg <-
+  # create a table of estimation specification combinations
+  expand_grid(
+    year = seq(2002, 2022, 5)
+  ) %>%
+  # iterate over spec table rows, construct model formula and estimate
+  pmap(function(...) {
+    row <- list(...)
+    d <- df_reg %>%
+      filter(year == row$year)
+    f <- "yield_soy ~ land_soy + exp_labhire + exp_labcont + asset_mach + exp_agser_cust"
+    # f <- "yield_soy ~ land_soy + exp_tot + sh_labcont + asset_mach + exp_agser_cust"
+    m <- lm_robust(as.formula(f), data = d, weights = d$n_land_soy)
+    # return single-row table with specs, formula and model object
+    tibble(..., formula = f, model = list(m))
+  }) %>%
+  bind_rows()
+
+
+result_reg$model %>%
+  set_names(result_reg$year) %>%
+  modelsummary(stars = TRUE, output = "huxtable")
+
+
+```
+
+
+
+## wheat
+
+```{r}
+df_reg <- df %>%
+  filter(name %in% c("land_wheat", "prod_wheat", "n_land_wheat", "exp_tot", "exp_labhire", "exp_labcont", "exp_agser_cust", "asset_mach")) %>%
+  pivot_wider(id_cols = c(year, stcty)) %>%
+  mutate(
+    yield_wheat = if_else(land_wheat > 0 & prod_wheat > 0, prod_wheat / land_wheat, NA),
+    sh_labcont = exp_labcont / (exp_labhire + exp_labcont)
+  ) %>%
+  mutate(across(c("yield_wheat", "land_wheat", "exp_tot", "exp_labhire", "exp_labcont", "exp_agser_cust", "asset_mach"), \(x) log(x + 1)))
+
+
+result_reg <-
+  # create a table of estimation specification combinations
+  expand_grid(
+    year = seq(2002, 2022, 5)
+  ) %>%
+  # iterate over spec table rows, construct model formula and estimate
+  pmap(function(...) {
+    row <- list(...)
+    d <- df_reg %>%
+      filter(year == row$year)
+    f <- "yield_wheat ~ land_wheat + exp_labhire + exp_labcont + asset_mach + exp_agser_cust"
+    # f <- "yield_wheat ~ land_wheat + exp_tot + sh_labcont + asset_mach + exp_agser_cust"
+    m <- lm_robust(as.formula(f), data = d, weights = d$n_land_wheat)
+    # return single-row table with specs, formula and model object
+    tibble(..., formula = f, model = list(m))
+  }) %>%
+  bind_rows()
+
+
+result_reg$model %>%
+  set_names(result_reg$year) %>%
+  modelsummary(stars = TRUE, output = "huxtable")
+
+
+```
 
 # LBD regressions
 
@@ -870,7 +1073,7 @@ models %>%
 
 
 
-### interacted ME
+### interacted
 
 Land interaction: Positive effect on productivity is amplified in larger counties for all except corn.
 
@@ -878,25 +1081,34 @@ Average land interaction: For crops, positive effect on productivity is amplifie
 
 
 ```{r}
-models <- rdc_2024$static_yield %>%
-  filter(model == "logyield ~ logpay * (logland + logavgland) + hhi_land") %>%
-  mutate(label = paste0(commodity, "_", year), .before = 1)
 
-fits <- unique(models$label) %>%
-  set_names() %>%
-  map(\(l) filter(models, label == l))
+paperdata$reg_int <- models <- expand_grid(commodity = c("corn", "soy", "wheat"), year = seq(2002, 2017, 5)) %>%
+  pmap(function(commodity, year) {
+    model <- list()
+    model[[1]] <- rdc_2024$static_yield %>%
+      filter(
+        model == "logyield ~ logpay * (logland + logavgland) + hhi_land",
+        commodity == !!commodity, 
+        year == !!year)
+    tibble(commodity, year, label = paste0(commodity, "_", year), model)
+  }) %>%
+  bind_rows()
 
-for (x in c("crop", "corn", "soy", "wheat")) {
+for (x in c("corn", "soy", "wheat")) {
   models %>%
     filter(commodity == x) %>%
-    distinct(label) %>%
-    pull() %>%
-    `[`(fits, .) %>%
-    modelsummary(output = "huxtable") %>%
+    pull(model, name = label) %>%
+    modelsummary(
+      output = "huxtable",
+      coef_map = c("logpay" = "Payroll", "logpay:logland" = "Payroll*Land", "logpay:logavgland" = "Payroll*AvgLand", "logland" = "Land", "logavgland" = "AvgLand", "hhi_land" = "LandHHI")
+    ) %>%
     print()
 }
+
+
 ```
 
+#### marginal effects
 
 ```{r}
 # model equation:
@@ -917,6 +1129,7 @@ d_land <- agser$data_farm("county") %>%
 
 d_me <- inner_join(d_coef, d_land, by = c("year", "commodity")) %>%
   mutate(me = logpay + `logpay:logland` * logland + `logpay:logavgland` * logavgland)
+d_me
 ```
 
 
@@ -954,6 +1167,28 @@ d_me %>%
 
 
 ```{r}
+#' var-cov matrix from static yield model with interactions
+rdc_vcov <- function(commodity, year) {
+  model <- "logyield ~ logpay * (logland + logavgland) + hhi_land"
+  coefs <- c("logpay", "logpay:logland", "logpay:logavgland")
+  vc <- matrix(nrow = 3, ncol = 3, dimnames = list(coefs, coefs))
+  se <- rdc_2024$static_yield %>%
+    filter(commodity == !!commodity, year == !!year, model == !!model, term %in% coefs) %>%
+    pull(std.error, name = term)
+  se <- se[coefs]
+  diag(vc) <- se^2
+  df_cov <- rdc_2024$static_yield %>%
+    filter(commodity == !!commodity, year == !!year, model == !!model) %>%
+    filter(term == "coef_covar")
+  for (i in 1:nrow(df_cov)) {
+    t1 <- df_cov$term_1[i]
+    t2 <- df_cov$term_2[i]
+    vc[t1, t2] <- vc[t2, t1] <- df_cov$covariance[i]
+  }
+  vc
+}
+
+
 df <- rdc_2024$static_yield %>%
   filter(model == "logyield ~ logpay * (logland + logavgland) + hhi_land",
          str_detect(term, "logpay")) %>%
@@ -969,6 +1204,13 @@ df <- rdc_2024$static_yield %>%
       pivot_wider(id_cols = sample_label, names_from = variable, values_from = c("25%", "50%", "75%"), names_glue = "{variable}_{.value}") %>%
       rename_with(\(x) str_sub(x, 1, -2), .cols = ends_with("%")),
     by = "sample_label") %>%
+  pmap(function(...) {
+    row <- list(...)
+    vc <- rdc_vcov(row$commodity, row$year)
+    tibble(..., vc = list(vc))
+  }) %>%
+  bind_rows() %>%
+  rowwise() %>%
   mutate(
     dydx_logland_25 = logpay + logpay_logland * logland_25 + logpay_logavgland * logavgland_50,
     dydx_logland_75 = logpay + logpay_logland * logland_75 + logpay_logavgland * logavgland_50,
@@ -976,16 +1218,22 @@ df <- rdc_2024$static_yield %>%
     dydx_logavgland_75 = logpay + logpay_logland * logland_50 + logpay_logavgland * logavgland_75
   )
 
-paperdata$reg_me <- d <- df %>%
+df
+```
+
+
+
+```{r}
+d <- df %>%
   select(commodity, year, starts_with("dydx_")) %>%
-  pivot_longer(!c(commodity, year), names_pattern = "dydx_(.+)_(..)", names_to = c("atvar", "atval")) %>%
+  pivot_longer(!c(commodity, year), names_pattern = "dydx_(.+)_(..)", names_to = c("atvar", "atval"), values_to = "dydx") %>%
   mutate(atval = paste0(atval, "%"))
   
 d %>%
   filter(atvar == "logland") %>%
   rename(land = atval) %>%
   ggplot() +
-  geom_line(aes(year, value, color = land)) +
+  geom_line(aes(year, dydx, color = land)) +
   facet_wrap("commodity", scale = "free_y") +
   geom_hline(aes(yintercept = 0), linetype = 2) +
   scale_x_continuous(breaks = PAR$lbd_years) +
@@ -996,7 +1244,7 @@ d %>%
   filter(atvar == "logavgland") %>%
   rename(avg_land = atval) %>%
   ggplot() +
-  geom_line(aes(year, value, color = avg_land)) +
+  geom_line(aes(year, dydx, color = avg_land)) +
   facet_wrap("commodity", scale = "free_y") +
   geom_hline(aes(yintercept = 0), linetype = 2) +
   scale_x_continuous(breaks = PAR$lbd_years) +
@@ -1004,6 +1252,76 @@ d %>%
 
 
 ```
+
+
+
+
+```{r}
+
+#' Std error of marginal effect of logpay at given values of logland and logavgland
+me_se <- function(vc, land, avgland) {
+  jac <- matrix(c(1, land, avgland), ncol = 1)
+  (t(jac) %*% vc %*% jac) %>%
+    c() %>%
+    sqrt()
+}
+
+# d_land %>%
+#   filter(commodity != "crop", year == 2012) %>%
+#   group_by(commodity) %>%
+#   skim(logland, logavgland)
+
+df_land_p50 <- rdc_2024$desc %>%
+  filter(variable %in% c("land", "avgland")) %>%
+  mutate(value = log(`50%`)) %>%
+  pivot_wider(id_cols = c(commodity, year), names_from = variable, names_glue = "log{variable}_p50")
+
+paperdata$reg_me <- d <- df %>%
+  filter(commodity != "crop") %>%
+  left_join(df_land_p50, by = c("commodity", "year")) %>%
+  pmap(function(commodity, year, logpay, logpay_logland, logpay_logavgland, vc, logland_p50, logavgland_p50, ...) {
+    
+    bind_rows(
+      tibble(atvar = "land", logland = seq(2, 11), logavgland = logavgland_p50),
+      tibble(atvar = "avgland", logland = logland_p50, logavgland = seq(2, 6))
+    ) %>%
+    rowwise() %>%
+    mutate(
+      commodity = commodity,
+      year = year,
+      dydx = logpay + logpay_logland * logland + logpay_logavgland * logavgland,
+      se = me_se(vc, logland, logavgland),
+      lo = dydx - 1.96 * se,
+      hi = dydx + 1.96 * se
+    )
+  }) %>%
+  bind_rows()
+
+d %>%
+  filter(atvar == "land") %>%
+  ggplot() +
+  geom_ribbon(aes(logland, ymin = lo, ymax = hi), alpha = 0.2) +
+  geom_line(aes(logland, dydx)) +
+  geom_hline(aes(yintercept = 0), linetype = 2) +
+  facet_wrap(c("commodity", "year"), scales = "free_y")
+
+d %>%
+  filter(atvar == "avgland") %>%
+  ggplot() +
+  geom_ribbon(aes(logavgland, ymin = lo, ymax = hi), alpha = 0.2) +
+  geom_line(aes(logavgland, dydx)) +
+  geom_hline(aes(yintercept = 0), linetype = 2) +
+  facet_wrap(c("commodity", "year"), scales = "free_y")
+
+```
+
+```{r}
+df %>%
+  filter(commodity != "crop")
+
+
+```
+
 
 ## productivity growth
 
@@ -1038,3 +1356,5 @@ for (x in PAR$commodities) {
 }
 
 ```
+
+

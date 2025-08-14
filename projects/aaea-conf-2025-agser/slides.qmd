@@ -1,0 +1,352 @@
+---
+title: "Vertical Disintegration and the Shifting Boundary of the Farm Business: Implications for Agricultural Productivity"
+author:
+  - Anton Babkin
+  - Richard A. Dunn
+---
+
+Results for AAEA-2025 presentation slides.
+
+# top
+
+```{r}
+#| eval: true
+#| output: false
+library(logger)
+library(tidyverse)
+library(tmap)
+library(tigris)
+library(sf)
+library(modelsummary)
+library(patchwork)
+
+theme_set(theme_minimal())
+log_threshold(WARN)
+options(tigris_use_cache = TRUE)
+
+
+source("projects/aaea-conf-2025-agser/agser.R", local = (agser <- new.env()))
+glance.lmdf <- agser$glance.lmdf
+tidy.lmdf <- agser$tidy.lmdf
+
+rdc_2019 <- agser$rdc_res_2019()
+rdc_2024 <- agser$rdc_res_2024()
+```
+
+
+
+# farm TFP
+
+```{r}
+#| fig-width: 4
+#| fig-height: 3
+
+d <- agser$data_tfp() %>%
+  select(year, tfp) %>%
+  filter(year >= 1982) %>%
+  arrange(year) %>%
+  mutate(tfp = tfp / first(tfp))
+
+d %>%
+  ggplot() +
+  geom_line(aes(year, tfp)) +
+  scale_x_continuous(name = "", breaks = seq(1982, 2022, 10)) +
+  scale_y_continuous(name = "", limits = c(0.8, 1.8), labels = scales::label_percent(scale_cut = scales::cut_short_scale())) +
+  labs(title = "Farm productivity (TFP)")
+
+ggsave(agser$ppath("temp.png"), bg = "white")
+```
+
+
+# labor and machinery shares
+
+
+```{r}
+#| fig-width: 4
+#| fig-height: 3
+
+# https://agcensus.library.cornell.edu/wp-content/uploads/1992-United_States-United_States_Data-1574-Table-03.pdf
+# https://agcensus.library.cornell.edu/wp-content/uploads/1997-United_States-United_States_Data-1604-Table-03-1.pdf
+labor_old <- tribble(
+  ~year, ~exp_labhire, ~exp_labcont,
+  1982,  8441180,      1103773,
+  1987,  10866236,     1842984,
+  1992,  12961639,     2323904,
+  1997,  14841036,     2959005
+) %>%
+  pivot_longer(!year)
+
+d <- bind_rows(
+  agser$data_farm("national") %>%
+    filter(name %in% c("exp_labhire", "exp_labcont")) %>%
+    bind_rows(labor_old) %>%
+    mutate(share = value / sum(value), .by = year) %>%
+    filter(name == "exp_labcont") %>%
+    select(year, share) %>%
+    mutate(name = "paid labor"),
+  agser$data_fa2() %>%
+    filter(year %in% 1982:2022) %>%
+    summarize(value = sum(value), .by = c(year, ind_code)) %>%
+    mutate(share = value / sum(value), .by = year) %>%
+    filter(ind_code == "113F") %>%
+    select(year, share) %>%
+    mutate(name = "machinery")
+)
+  
+d %>%
+  ggplot() +
+  geom_line(aes(year, share, linetype = name)) +
+  scale_x_continuous(name = "", breaks = seq(1982, 2022, 10)) +
+  scale_y_continuous(name = "", limits = c(0, 0.25), labels = scales::label_percent(scale_cut = scales::cut_short_scale())) +
+  theme(legend.title = element_blank(), legend.position = "inside", legend.justification = c(0, 1), legend.position.inside = c(0, 1)) +
+  labs(title = "Share managed by service providers")
+
+ggsave(agser$ppath("temp.png"), bg = "white")
+```
+
+
+# agser county distr
+
+```{r}
+#| fig-width: 10
+#| fig-height: 3
+
+d <- rdc_2024$desc %>%
+  filter(commodity == "crop", variable %in% c("est", "pay", "pay_cr1")) %>%
+  mutate(across(c(mean, sd, `25%`, `50%`, `75%`), \(x) if_else(variable == "pay", x * 1000, x)))
+
+
+yl <- list(est = c(0, 8), pay = c(0, 5e6), pay_cr1 = c(0,1))
+ti <- list(est = "Establishments", pay = "Payroll", pay_cr1 = "Payroll share of largest est.")
+ps <- list()
+for (v in c("est", "pay", "pay_cr1")) {
+  p <- d %>%
+    filter(variable == v) %>%
+    ggplot(aes(x = year)) +
+    geom_boxplot(aes(lower = `25%`, upper = `75%`, middle = `50%`, ymin = `25%`, ymax = `75%`, group= year), stat = "identity", width = 2) +
+    geom_line(aes(y = mean)) +
+    geom_point(aes(y = mean)) +
+    scale_x_continuous(breaks = seq(2002, 2017, 5)) +
+    switch(
+      v,
+      est = scale_y_continuous(limits = yl[[v]], breaks = seq(0, 8, 2)),
+      pay = scale_y_continuous(
+        limits = yl[[v]], 
+        labels = scales::label_currency(scale_cut = scales::cut_short_scale())),
+     pay_cr1 =  scale_y_continuous(limits = yl[[v]], labels = scales::label_percent())
+    ) +
+    labs(title = ti[[v]], x = "", y = "")
+  ps[[v]] <- p
+}
+
+ps[["est"]] + ps[["pay"]] + ps[["pay_cr1"]]
+
+ggsave(agser$ppath("temp.png"), bg = "white")
+```
+
+
+
+# yield county distr
+
+```{r}
+#| fig-width: 10
+#| fig-height: 3
+
+d <- rdc_2024$desc %>%
+  filter(variable == "yield", commodity %in% c("corn", "soy", "wheat")) %>%
+  mutate(across(c(mean, sd, `25%`, `50%`, `75%`))) %>%
+  arrange(commodity, year)
+
+d %>%
+  ggplot(aes(x = year)) +
+  geom_boxplot(aes(lower = `25%`, upper = `75%`, middle = `50%`, ymin = `25%`, ymax = `75%`, group= year), stat = "identity", width = 2) +
+  geom_line(aes(y = mean)) +
+  geom_point(aes(y = mean)) +
+  facet_wrap("commodity", scale = "free_y") +
+  scale_x_continuous(name = "", breaks = seq(2002, 2017, 5), minor_breaks = NULL) +
+  scale_y_continuous(name = "", limits = c(0, NA))
+
+ggsave(agser$ppath("temp.png"), bg = "white")
+```
+
+
+```{r}
+#| fig-width: 10
+#| fig-height: 3
+
+d <- rdc_2024$desc %>%
+  filter(variable %in% c("yield", "pay"), commodity %in% c("corn", "soy", "wheat")) %>%
+  arrange(commodity, year) %>%
+  mutate(mean_norm = mean / first(mean), .by = c(commodity, variable)) %>%
+  mutate(variable = if_else(variable == "pay", "payroll", "yield"))
+
+d %>%
+  ggplot(aes(x = year)) +
+  geom_line(aes(y = mean_norm, linetype = variable)) +
+  geom_point(aes(y = mean_norm)) +
+  facet_wrap("commodity") +
+  scale_x_continuous(name = "", breaks = seq(2002, 2017, 5), minor_breaks = NULL) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale())) +
+  theme(legend.title = element_blank(), legend.position = "inside", legend.justification = c(0, 1), legend.position.inside = c(0, 1))
+
+ggsave(agser$ppath("temp.png"), bg = "white")
+```
+
+# crop maps
+
+
+```{r}
+#| fig-width: 10
+#| fig-height: 6
+
+df_farm <- agser$data_farm("county") %>%
+  filter(year == 2017, name %in% c("land_corn", "land_soy", "land_wheat")) %>%
+  pivot_wider(id_cols = stcty)
+
+df_qcew <- agser$qcew() %>%
+  filter(year == 2017, agglvl_code == "76", industry_code == "1151", own_code == "5") %>%
+  select(stcty = area_fips, est = annual_avg_estabs) %>%
+  collect()
+
+df <- tigris::counties(cb = TRUE, resolution = "20m", year = 2017) %>%
+  rename_with(tolower) %>%
+  rename(stcty = geoid) %>%
+  left_join(df_farm, by = "stcty") %>%
+  left_join(df_qcew, by = "stcty")
+
+titles <- c(
+  corn = "Corn\nN = 1,800",
+  soy = "Soybeans\nN = 1,500",
+  wheat = "Wheat\nN = 1,700"
+)
+p <- c("corn", "soy", "wheat") %>%
+  map(\(x) {
+    df %>%
+      mutate(insample = .data[[paste0("land_", x)]] > 0 & est > 0) %>%
+      shift_geometry() %>%
+      tm_shape() +
+      tm_polygons(fill = "insample", fill.scale = tm_scale_categorical(values = "#e6550d"), col_alpha = 0.1, fill.legend = tm_legend_hide()) +
+      tm_title_in(titles[x]) +
+      tm_layout(frame = FALSE)
+  }) %>%
+  tmap_arrange(ncol = 2, nrow = 2)
+
+p
+```
+
+
+```{r}
+# tmap_save(p, agser$ppath("temp.png"))
+grDevices::png(agser$ppath("temp.png"), width = 1000, height = 600)
+p
+dev.off()
+```
+
+
+
+# static reg table
+
+```{r}
+#| eval: true
+coef_renames <- c(
+  "logpay" = "Payroll", 
+  "logland" = "Land", 
+  "logavgland" = "AvgLand", 
+  "hhi_land" = "LandHHI",
+  "logpay:logland" = "Payroll*Land", 
+  "logpay:logavgland" = "Payroll*AvgLand"
+)
+
+d <- rdc_2024$static_yield %>%
+  filter(commodity == "corn", year == 2012)
+
+unique(d$model) %>%
+  map(\(l) filter(d, model == l)) %>%
+  modelsummary(output = "huxtable", coef_map = coef_renames, stars = TRUE)
+
+
+```
+
+
+```{r}
+
+#' Std error of marginal effect of logpay at given values of logland and logavgland
+me_se <- function(vc, land, avgland) {
+  jac <- matrix(c(1, land, avgland), ncol = 1)
+  (t(jac) %*% vc %*% jac) %>%
+    c() %>%
+    sqrt()
+}
+
+
+rdc_2024$static_yield %>%
+  filter(model == "logyield ~ logpay * (logland + logavgland) + hhi_land",
+         year == 2012, commodity == "corn",
+         str_detect(term, "logpay")) %>%
+  select(commodity, year, sample_label, term, estimate) %>%
+  pivot_wider(id_cols = c(commodity, year, sample_label), names_from = term, values_from = estimate) %>%
+  rename_with(\(x) str_replace(x, ":", "_")) %>%
+  left_join(
+    rdc_2024$desc %>%
+      select(sample_label, variable, "25%", "50%", "75%") %>%
+      filter(variable %in% c("land", "avgland")) %>%
+      mutate(variable = paste0("log", variable),
+             across(c("25%", "50%", "75%"), log)) %>%
+      pivot_wider(id_cols = sample_label, names_from = variable, values_from = c("25%", "50%", "75%"), names_glue = "{variable}_{.value}") %>%
+      rename_with(\(x) str_sub(x, 1, -2), .cols = ends_with("%")),
+    by = "sample_label") %>%
+  pmap(function(...) {
+    row <- list(...)
+    vc <- rdc_vcov(row$commodity, row$year)
+    se <- me_se(vc, row$logland_50, row$logavgland_50)
+    
+    tibble(..., vc = list(vc), se)
+  }) %>%
+  bind_rows() %>%
+  mutate(dydx = logpay + logpay_logland * logland_50 + logpay_logavgland * logavgland_50)
+
+```
+
+
+# static payroll coef
+
+```{r}
+#| fig-width: 4
+#| fig-height: 3
+m <- rdc_2024$static_yield %>%
+  filter(model == "logyield ~ logpay + logland + logavgland + hhi_land",
+         commodity != "crop",
+         term == "logpay") %>%
+  rename(label = sample_label)
+
+m %>%
+  left_join(m %>% tidy() %>% select(label, conf.low, conf.high),
+            by = "label") %>%
+  ggplot(aes(year)) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = commodity), alpha = 0.2) +
+  geom_line(aes(y = estimate, color = commodity, linetype = commodity)) +
+  geom_hline(aes(yintercept = 0), linetype = 2) +
+  scale_x_continuous(name = "", breaks = seq(2002, 2017, 5)) +
+  scale_y_continuous(name = "", limits = c(NA, 0.1)) +
+  theme(legend.title = element_blank(), legend.position = "inside", legend.justification = c(0, 1), legend.position.inside = c(0, 1)) +
+  labs(title = "Payroll coefficient with 95% CI")
+
+ggsave(agser$ppath("temp.png"), bg = "white")
+```
+
+
+# growth coef
+
+```{r}
+
+rdc_2024$dynamic_yield %>%
+  filter(commodity != "crop",
+         model == "diff_logyield ~ logpay + logyield + logland + logavgland + hhi_land",
+         term == "logpay") %>%
+  mutate(commodity = case_match(commodity, "corn" ~ "Corn", "soy" ~ "Soybeans", "wheat" ~ "Wheat")) %>%
+  mutate(value = paste0(sprintf("%.3f", round(estimate, 3)), replace_na(significance, ""), "<br>(", round(std.error, 3), ")")) %>%
+  pivot_wider(id_cols = commodity, names_from = year) %>%
+  tt()
+
+```
+

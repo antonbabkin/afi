@@ -1,5 +1,9 @@
 ---
-title: "Vertical Disintegration and the Shifting Boundary of the Farm Business: Implications for Agricultural Productivity and Market Structure"
+title: "Vertical Disintegration and the Shifting Boundary of the Farm Business: Implications for Agricultural Productivity"
+author:
+  - Anton Babkin
+  - Richard A. Dunn
+date: today
 execute:
   echo: false
 format:
@@ -9,8 +13,9 @@ format:
     embed-resources: true
     page-layout: full
     df-print: paged
-# a workaround for broken docx, see here https://github.com/quarto-dev/quarto-cli/issues/7321
-  # docx:
+  docx:
+    link-citations: true
+  # a workaround for broken docx, see here https://github.com/quarto-dev/quarto-cli/issues/7321
   #   tbl-cap-location: bottom
 
 bibliography: references.bib
@@ -20,6 +25,7 @@ bibliography: references.bib
 #| output: false
 library(tidyverse)
 library(modelsummary)
+library(tinytable)
 
 theme_set(theme_minimal())
 
@@ -33,38 +39,54 @@ paperdata <- readRDS(agser$opath$paper)
 
 # 1. Introduction
 
-Identifying the sources of productivity growth in the agricultural sector of the US economy is a core issue for researchers, policymakers, and producers.
-Higher productivity improves competitiveness in international commodity markets, lowers the cost of food for American households, increases the welfare of farm families and agricultural workers, and strengthens the economic vitality of rural communities.
-In this paper we study the role played by specialized service providers in shaping agricultural productivity growth.
+Agricultural production in the United States has undergone significant vertical disintegration over the past half century [@dunn2017].
+On-farm production activities – soil preparation, planting, cultivation, harvesting, and pre-market processing – are increasingly undertaken by specialist providers who supply labor, capital, and management services.
+The choice to outsource production activities, while profit or utility maximizing for the farm business, may not be productivity enhancing.
+Evidence from other sectors of the economy indeed suggest that the relationship between the outsourcing of production activities and productivity is both theoretically and empirically ambiguous. 
 
-One of the most robust stylized facts is the secular increase in farm total factor productivity (TFP).
-Since 1948, farm output nearly tripled while use of farm inputs has remained flat [@usda-ers2025; @wang2024].
-In practice, however, TFP is a residual—it is the increase in output that an aggregate production function specification is not directly measuring.
-Allocating the observed TFP growth to specific sources is therefore vitally important for the promulgation of effective agricultural policy.
+Despite the importance of agricultural productivity to the national, regional, and local economies of the United States and its central role in shaping domestic energy, environmental conservation, rural economic development, international trade, and immigration policy, the effect of agricultural service providers on agricultural productivity has not been adequately documented.
+Therefore, in this article we estimate the relationship between access to agricultural service providers and crop yields using Federal administrative data that overcomes the suppression and survey non-response issues that exist in other data sources.
 
-This growth has mainly been attributed to technological improvement, primarily fueled by R&D investments from public and private sectors, enhanced by public infrastructure, extension, and technology spillover from other sectors or neighboring regions [@alston2010; @huffman2006; @fuglie2007; @plastina2012; @wang2013].
+*Ag services grow faster than farms.*
 
-These explanations may be incomplete, however, as they tend to ignore the evolving structure of agricultural production.
-It is well-documented that farms have undergone significant consolidation over the past century.
-The number of farms has fallen while the average size has increased with a heavy skew toward the very largest operations.
-Less well studied has been the vertical disintegration of agricultural production characterized by the increasing share of production activities undertaken by specialist service providers rather than by farm operations [@dunn2017].
+The sector of agricultural services has been expanding at a faster rate than the farm sector, as can be seen indirectly from the structure of farm labor expenditures and ownership of agricultural machinery.
+According to the Census of Agriculture, from 2002 to 2022 the contract labor expenditures have increased by %88 in real terms, double of the %44 growth rate of farm spending on hired labor.
+The stock of tractors and other agricultural machinery owned by farms increased by 57%, dwarfed by the 546% growth of the stock owned by service providers, as reported by the Bureau of Economic Analysis (BEA) in its Fixed Asset Accounts data.
+Both trends clearly indicate that the share of agricultural labor and capital managed by the specialized service providers has been growing.
+
+*LBD is a feasible data source to study dynamism of the services sector.*
 
 Despite the importance of the agricultural services sector to the farm economy, because of gaps in the federal statistical system, relatively little is known about how this industry has evolved over the past three decades.
-@babkin2022 document establishment, employment, payroll, and wage dynamics for businesses that provide support services to crop production.
-They demonstrate that agricultural support service is a uniquely dynamic and rapidly evolving sector of the American economy.
+Using the Longitudinal Business Database (LBD) – a restricted use dataset constructed from the administrative federal tax records – @babkin2022 document establishment, employment, payroll, and wage dynamics for businesses that provide support services to crop production (NAICS industry code 1151).
+They demonstrate that agricultural support services is a uniquely dynamic and rapidly evolving sector of the American economy.
 Although rates of entry have fallen substantially, large incumbent firms have tended to grow in size.
 Furthermore, the real annual mean wage to nonagricultural workers employed in the sector has increased by nearly \$10,000 over the 1992-2016 period, indicating sizable growth in labor productivity.
 Nonetheless, standard measures of economic dynamism, a principal source of productivity growth, have all fallen, which may have implications for innovation and the long-term health of this industry and agricultural production more generally.
 
-The relationship between service use and agricultural productivity is a priori ambiguous.
-At the national level, there is a strong evidence of substitution towards agricultural services, implying that it is an optimal choice by farm operators.
-But farmers do not necessarily optimize for agricultural productivity, and rather for profitability of the farm business or even overall utility of the farm household.
-Multiple factors can make switching to an external service provider preferable even if it leads to lower yields.
-Among these are the time spent supervising hired laborers, the need to acquire and maintain agricultural machinery and risks of under-utilization over its lifespan, and the opportunity to allocate farm owner's time to activities outside of farm operation.
-On the other hand, external service provider not be familiar with all the nuances of a specific farm operation, and additional inefficiencies are also introduced by the classic principal-agent friction.
-In this paper, we use the administrative LBD data to investigate the relationship between availability agricultural service providers and farm productivity at a local market level.
+*Agricultural productivity growth is a big deal, and this is how it is measured at macro level.*
 
-Our findings for the agricultural sector are complementary to the rich literature studying the questions of vertical desintegration in the context of outsourcing in manufacturing and services.
+One of the most robust stylized facts about the agricultural production is the secular increase in farm total factor productivity (TFP).
+In the aggregate productivity accounting, pioneered by @solow1957 and further refined by @jorgenson1967, TFP is measured as the residual from the growth rate of output net of the growth rates of inputs, adjusted for changes in quality.
+Since 1948, farm output nearly tripled while use of farm inputs has remained flat, implying an annualized productivity growth rate of 1.49 percent [@usda-ers2025; @wang2024].
+This is remarkable, as out of 36 industries, this growth rate was only outpaced by the Computer and electronic products sector [@eldridge2020].
+Agricultural productivity growth has mainly been attributed to technological improvement, primarily fueled by R&D investments from public and private sectors, enhanced by public infrastructure, extension, and technology spillover from other sectors or neighboring regions [@alston2010; @huffman2006; @fuglie2007; @plastina2012; @wang2013].
+However, it is very hard to assess the role that the growing services sector might have played in the evolution of agricultural productivity due to the data limitations and the assumptions imposed by this macro level approach.
+
+*Another approach is to productivity measurement is the micro-econometric perspective.*
+
+*TODO: A paragraph on manufacturing productivity literature, yield regressions. The literature is vast. Establishment-level TFP estimates are common, as are many other measures (labor productivity, returns on assets, etc). No studies (?) attempt to measure farm-level TFP, but there is literature on yields (land productivity). [@vanbeveren2012]*
+
+*Reallocation is where micro meets macro. Labor and capital move from farms to services.*
+
+The aggregate productivity accounting approach based on the original Solow–Jorgenson–Griliches paradigm has been greatly enriched by the econometric analysis of longitudinal establishment-level datasets [@bartelsman2000; @foster2001; @foster2008].
+The panel nature of these data provides information on business entry and exit, allowing to separate the productivity changes within a firm from the aggregate growth resulting from reallocation of resources between firms.
+
+The classic "creative destruction" argument maintains that the reallocation from less to more effective users is a major factor in the increase of the aggregate productivity.
+The observed shift of labor, capital and managerial resources from farms to specialized service providers can be seen through this lens as a reallocation to businesses that can utilize them in a more efficient manner, implying both an increase in the aggregate productivity of the extended agricultural sector and a higher average productivity of the remaining farms through positive selection.
+
+*Inter-sectoral reallocation has been studied in the outsourcing literature. The productivity implications are ambiguous.*
+
+Outside of the agricultural sector, the effects of vertical desintegration on firm performance have been studied in the context of outsourcing in manufacturing and services.
 It has been shown both theoretically and empirically that outsourcing is not always associated with increases in productivity [@heshmati2003; @görg2004; @lahiri2016].
 Outsourcing is expected to involve production cost savings relative to internal production because outside suppliers benefit from economies of scale, smoother production schedules and centralization of expertise, but the choice between continued internal production or an outsourcing decision requires other considerations than pure production cost differences.
 
@@ -75,7 +97,25 @@ From the perspective of the agency theory, client firms (principals) employ prov
 Multiple other theoretical approaches exist, but regardless of model predictions, realized effects of outsourcing on firm performance depend greatly on the implementation of the outsourcing strategy by firm management.
 
 Empirically, a range of studies from different national contexts have shown that outsourcing can have positive [@bardhan2006], negative [@broedner2009] or no significant effects [@bengtsson2009] on firm performance.
-An important observation is that empirical studies use a wide array of performance indicators, including financial metrics (return on assets, profit margins, sales), labor productivity and indirect measures such as customer satisfaction or rates of innovation.
+In is worth noting that empirical studies use a wide array of performance indicators, including financial metrics (return on assets, profit margins, sales), labor productivity and indirect measures such as customer satisfaction or rates of innovation.
+
+*Sheldon's work on China: mixed effects.*
+
+The closest to our work is the empirical study of the impact of agricultural mechanization services adoption in China [@lu2022].
+The authors underscore the ambiguity of the potential effect as higher efficiency and moral hazard can move it in the opposite directions.
+Using a 2018 survey of rural households, they find positive effects in plowing, transplanting, and harvesting, and a negative effect in pesticide spraying.
+To the best of our knowledge, no studies exist on this topic in the United States.
+
+*Ambiguity of predictions.*
+
+To sum up the existing evidence, the relationship between service use and agricultural productivity is a priori ambiguous.
+At the national level, there is a strong evidence of substitution towards agricultural services, implying that it is an optimal choice by farm operators.
+But farmers do not necessarily optimize for agricultural productivity, and rather for profitability of the farm business or even overall utility of the farm household.
+Multiple factors can make switching to an external service provider preferable even if it leads to lower yields.
+Among these are the time spent supervising hired laborers, the need to acquire and maintain agricultural machinery and risks of under-utilization over its lifespan, and the opportunity to allocate farm owner's time to activities outside of farm operation.
+On the other hand, an external service provider may not be familiar with all the nuances of a specific farm operation, and additional inefficiencies are also introduced by the classic principal-agent friction.
+
+*We turn to dis-aggregated data (county and establishment level) to study the reallocation of management, capital and labor from farms to agser providers.*
 
 In this study, we measure the scale of activity of the agricultural service providers in a county using total payroll of the LBD establishments in the NAICS 1151 industry.
 These data offer multiple advantage over the alternative of using expenses reported in the Census of Agriculture (COA).
@@ -84,9 +124,17 @@ LBD, on the other hand, is based on administrative IRS records and includes ever
 Second, payroll expenditures paid by service providers to workers better track the quantity of labor input used in production than the amounts paid to providers by farmer.
 Finally, the use of microdata resolves the issue of cell suppression and allows us to calculate custom indicators characterizing local markets, such as measures of market concentration.
 
+*Aggregated data from the Census of Agriculture do not allow separation of farm expenditures by farm output, and thus it is not possible to tell what share of expenditures goes to crop and animal production, whereas service provider establishments can be easily separated according to the NAICS code.*
+
+*Market structure. This a holdout from the earlier logic where it was presented as a limitation of the productivity accounting. We see that county-level agser concentration is not growing, while farm HHI does. Find a way to connect it with the productivity/outsourcing story or discard altogether?*
+
 Considerable number of studies have explored both theoretically and empirically the role of market power of food manufacturers and retailers [@sexton2013; @sheldon2017; @smith2015; @gaudin2018; @ma2019; @sexton2018; @moschini2025].
 On the upstream side of the farm, the literature is much smaller and has been mostly focused on increasing market concentration of seeds and agricultural chemicals suppliers [@macdonald2017; @fuglie2012; @hendrickson2017; @wilson2010].
 Our paper offers new insights into the structure of the agricultural services market and paves the way for a more nuanced micro-level analysis of the effect of imperfectly competitive pricing on productivity growth accounting.
+
+*Quick results and things we will discuss at the end.*
+
+*TODO: quick results and things.*
 
 The article is organized as follows.
 In Section 2 we provide a set of stylized facts characterizing the trends in farm productivity, expenditures and the agricultural services sector.
@@ -267,6 +315,8 @@ Finally, the numbers reported as the farm contract labor expenditures are the pa
 
 *This section will be further expanded.*
 
+<!--# TODO:Verify in the lab:- are regressions weighted? -->
+
 ## Data sources
 
 -   Census of Agriculture, 2002-2022.
@@ -312,14 +362,19 @@ This dataset is only accessible through an approved research project in the FSRD
 Counties included in the "suppressed" column only have the number of service provider establishments reported, while employment and payroll are suppressed to protect business data confidentiality.
 The 76% of counties with suppression host 38% of all agricultural services establishments.
 And while these establishments are mostly small and constitute only 15% of total employment and 18% of total payroll, they operate in counties where more than half of all crop production is taking place.
-<!--# TODO: Add a column with farm number for counties with no agser establishments, update the totals and pct_supressed -->
 
 ```{r}
 #| label: tbl-qcew-sup
 #| tbl-cap: Data suppression in 2012 QCEW.
 
 paperdata$qcew_sup %>%
-  datasummary_df(fmt = modelsummary:::fmt_identity())
+  relocate(name, total, no_agser, published, suppressed, sh_suppressed) %>%
+  rename(Measure = name, Total = total, `No services` = no_agser, Available = published, Suppressed = suppressed, `% suppr.` = sh_suppressed) %>%
+  tt() %>%
+  format_tt(i = 1, j = 2:5, digits = 0, num_mark_big = ",") %>%
+  format_tt(i = 2:7, j = 2:5, digits = 3, num_suffix = TRUE) %>%
+  format_tt(j = 6, fn = scales::label_percent()) %>%
+  style_tt(j = 1, align = "l")
 ```
 
 Using the LBD, we can characterize the structure of the local agricultural services market.
@@ -336,7 +391,21 @@ This finding is in sharp contrast to the trends of increasing market concentrati
 paperdata$agser_distr %>%
   select(variable, year, nobs, mean, sd, `25%`, `50%`, `75%`) %>%
   arrange(variable, year) %>%
-  datasummary_df(fmt = modelsummary:::fmt_identity())
+  mutate(
+    variable = case_match(
+      variable,
+      "est" ~ "Establishments",
+      "pay" ~ "Payroll",
+      "pay_cr1" ~ "Largest payroll"
+    )) %>%
+  tt() %>%
+  format_tt(j = 3, digits = 0, num_mark_big = ",") %>%
+  format_tt(i = 1:4, j = 4:8, digits = 3) %>%
+  format_tt(i = 5:8, j = 4:8, digits = 3, num_suffix = TRUE) %>%
+  format_tt(i = 9:12, j = 4:8, fn = scales::label_percent()) %>%
+  style_tt(i = 1, j = 1, rowspan = 4) %>%
+  style_tt(i = 5, j = 1, rowspan = 4) %>%
+  style_tt(i = 9, j = 1, rowspan = 4)
 
 ```
 
@@ -373,7 +442,6 @@ A 1% increase in agricultural service payroll is associated with a 0.02-0.06, 0.
 While the magnitude of these estimates is smaller than in the sales-per-acre model, they are always statistically significant and likely underestimated as discussed above.
 
 ```{r}
-#| eval: true
 #| label: tbl-reg-static-com
 #| tbl-cap: "Payroll coefficient estimates"
 
@@ -391,9 +459,46 @@ models %>%
 ```
 
 The effect of the service payroll on yields varies by the distribution of harvested land, as identified by the interaction terms in [@eq-reg-static-int].
-Full set of estimates are reported in the Appendix Table ...
-<!--# TODO: add the table --->, and for easier interpretation, [@fig-me] shows marginal effects of payroll evaluated at high and low quartiles of the respective land variables.
+Full set of estimates are reported in [Tables -@tbl-reg-int-1], [-@tbl-reg-int-2] and [-@tbl-reg-int-3], and for easier interpretation, [@fig-me] shows marginal effects of payroll evaluated at high and low quartiles of the respective land variables.
 Large magnitudes of variation of the marginal effect across time and commodities suggest that heterogeneity might be present, but statistical significance of the estimates is generally low, and no strong patterns emerge.
+
+```{r}
+#| label: tbl-reg-int-1
+#| tbl-cap: "Regression of corn yields on service provider payroll."
+
+coef_renames <- c(
+  "logpay" = "Payroll", 
+  "logpay:logland" = "Payroll*Land", 
+  "logpay:logavgland" = "Payroll*AvgLand", 
+  "logland" = "Land", 
+  "logavgland" = "AvgLand", 
+  "hhi_land" = "LandHHI")
+
+paperdata$reg_int %>%
+  filter(commodity == "corn") %>%
+  pull(model, name = year) %>%
+  modelsummary(output = "huxtable", coef_map = coef_renames)
+```
+
+```{r}
+#| label: tbl-reg-int-2
+#| tbl-cap: "Regression of soybean yields on service provider payroll."
+
+paperdata$reg_int %>%
+  filter(commodity == "soy") %>%
+  pull(model, name = year) %>%
+  modelsummary(output = "huxtable", coef_map = coef_renames)
+```
+
+```{r}
+#| label: tbl-reg-int-3
+#| tbl-cap: "Regression of wheat yields on service provider payroll."
+ 
+paperdata$reg_int %>%
+  filter(commodity == "wheat") %>%
+  pull(model, name = year) %>%
+  modelsummary(output = "huxtable", coef_map = coef_renames)
+```
 
 ```{r}
 #| label: fig-me
@@ -402,30 +507,23 @@ Large magnitudes of variation of the marginal effect across time and commodities
 #|   - "At different levels of land"
 #|   - "At different levels of average land"
 #| layout-nrow: 2
-#| fig-asp: 0.4
+#| fig-asp: 0.8
 
 paperdata$reg_me %>%
-  filter(commodity != "crop", atvar == "logland") %>%
-  rename(land = atval) %>%
+  filter(atvar == "land") %>%
   ggplot() +
-  geom_line(aes(year, value, color = land)) +
-  facet_wrap("commodity", scale = "free_y", nrow = 1) +
+  geom_ribbon(aes(logland, ymin = lo, ymax = hi), alpha = 0.2) +
+  geom_line(aes(logland, dydx)) +
   geom_hline(aes(yintercept = 0), linetype = 2) +
-  scale_y_continuous(name = "") +
-  scale_x_continuous(name = "", breaks = seq(2002, 2017, 5)) +
-  theme(legend.position = "inside", legend.justification = c(0, 1), legend.position.inside = c(0, 1))
-
+  facet_wrap(c("commodity", "year"), scales = "free_y")
 
 paperdata$reg_me %>%
-  filter(commodity != "crop", atvar == "logavgland") %>%
-  rename(avgland = atval) %>%
+  filter(atvar == "avgland") %>%
   ggplot() +
-  geom_line(aes(year, value, color = avgland)) +
-  facet_wrap("commodity", scale = "free_y", nrow = 1) +
+  geom_ribbon(aes(logavgland, ymin = lo, ymax = hi), alpha = 0.2) +
+  geom_line(aes(logavgland, dydx)) +
   geom_hline(aes(yintercept = 0), linetype = 2) +
-  scale_y_continuous(name = "") +
-  scale_x_continuous(name = "", breaks = seq(2002, 2017, 5)) +
-  theme(legend.position = "inside", legend.justification = c(0, 1), legend.position.inside = c(0, 1))
+  facet_wrap(c("commodity", "year"), scales = "free_y")
 
 ```
 
@@ -438,7 +536,6 @@ All statistically significant coefficients in these models are positive, support
 To illustrate with the largest coefficient, crop-growing counties that had a 1% larger service sector experienced a 0.05% growth rate in corn yields.
 
 ```{r}
-#| eval: true
 #| label: tbl-reg-dynamic
 #| tbl-cap: Payroll coefficient estimates
 

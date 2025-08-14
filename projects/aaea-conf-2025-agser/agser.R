@@ -76,23 +76,10 @@ agcensus <- function(year = NULL) {
     rename_with(str_to_lower)
 }
 
+
 qcew <- function(year = NULL) {
-  if (is_null(year)) {
-    # default dataset schema is derived from first(?) partition,
-    # and disclosure_code incorrectly reads as null type
-    # instead, use schema from 2022 where it is correctly detected
-    x <- pubdata_path("qcew/qcew.parquet/2022/part.pq") %>%
-      arrow::open_dataset()
-    sch <- x$schema$fields %>%
-      append(arrow::field("year", arrow::int16())) %>%
-      arrow::schema()
-    return(
-      pubdata_path("qcew/qcew.parquet") %>%
-        arrow::open_dataset(schema = sch, partitioning = "year")
-    )
-  }
-  glue("qcew/qcew.parquet/{year}/part.pq") %>%
-    pubdata_path() %>%
+  pubdata::path("qcew", "naics_ann_2020") %>%
+    dirname() %>%
     open_dataset()
 }
 
@@ -177,7 +164,7 @@ data_farm <- function(geo = c("county", "state", "national")) {
     collect() %>%
     left_join(renames, "short_desc") %>%
     relocate(year, stcty, name, value, value_f, short_desc) %>%
-    mutate(value = if_else(str_detect(name, "^(sale_|exp_)"), deflate_dollars(year, value), value)) %>%
+    mutate(value = if_else(str_detect(name, "^(sale_|exp_|asset_)"), deflate_dollars(year, value), value)) %>%
     arrange(year, stcty)
   
 }
@@ -276,6 +263,15 @@ data_fa <- function() {
     select(year, industry, asset, value) %>%
     arrange(industry, asset, year) %>%
     mutate(value_norm = value / first(value), .by = c(industry, asset))
+}
+
+data_fa2 <- function() {
+  pubdata::get("bea_fa", "det_nonres_stk-cc") %>%
+    filter(asset_code %in% c("EO30", "EO21"), ind_code %in% c("110C", "113F")) %>%
+    mutate(value = 1e6 * deflate_dollars(year, value)) %>%
+    mutate(industry = case_match(ind_code, "110C" ~ "Farms", "113F" ~ "Forestry, fishing, and related activities")) %>%
+    select(year, industry, asset_code, asset = asset_type, ind_code, industry, value) %>%
+    arrange(ind_code, asset_code, year)
 }
 
 
