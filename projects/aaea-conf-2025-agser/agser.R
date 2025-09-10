@@ -181,6 +181,21 @@ if (FALSE) {
 }
 
 
+#' Data from earlier Censuses copied manually from PDFs
+data_farm_labor_pre2002 <- function() {
+  # https://agcensus.library.cornell.edu/wp-content/uploads/1992-United_States-United_States_Data-1574-Table-03.pdf
+  # https://agcensus.library.cornell.edu/wp-content/uploads/1997-United_States-United_States_Data-1604-Table-03-1.pdf
+  tribble(
+    ~year, ~exp_labhire, ~exp_labcont,
+    1982,  8441180,      1103773,
+    1987,  10866236,     1842984,
+    1992,  12961639,     2323904,
+    1997,  14841036,     2959005
+  ) %>%
+    pivot_longer(!year) %>%
+    mutate(value = 1e3 * deflate_dollars(year, value))
+}
+
 # BEA ----
 
 data_io <- function() {
@@ -255,17 +270,6 @@ data_io <- function() {
 
 
 data_fa <- function() {
-  pubdata::get("bea_fa", "det_nonres_stk-cc") %>%
-    filter(year %in% 2002:2022, asset_code %in% c("EO30", "EO21"), ind_code %in% c("110C", "113F")) %>%
-    mutate(value = 1e6 * deflate_dollars(year, value)) %>%
-    mutate(asset = case_match(asset_code, "EO30" ~ "other ag machine", "EO21" ~ "tractors")) %>%
-    mutate(industry = case_match(ind_code, "110C" ~ "farms", "113F" ~ "forest, fish and serv")) %>%
-    select(year, industry, asset, value) %>%
-    arrange(industry, asset, year) %>%
-    mutate(value_norm = value / first(value), .by = c(industry, asset))
-}
-
-data_fa2 <- function() {
   pubdata::get("bea_fa", "det_nonres_stk-cc") %>%
     filter(asset_code %in% c("EO30", "EO21"), ind_code %in% c("110C", "113F")) %>%
     mutate(value = 1e6 * deflate_dollars(year, value)) %>%

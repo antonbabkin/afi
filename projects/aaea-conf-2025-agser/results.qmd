@@ -30,7 +30,6 @@ library(patchwork)
 
 theme_set(theme_minimal())
 
-
 log_threshold(WARN)
 options(tigris_use_cache = TRUE)
 
@@ -67,78 +66,87 @@ venn <- function(x, y) {
 ## data
 
 ```{r}
+dat <- list(
+  tfp = agser$data_tfp(),
+  farm_nat = agser$data_farm("national"),
+  farm_cty = agser$data_farm("county"),
+  farm_labor_pre2002 = agser$data_farm_labor_pre2002(),
+  io = agser$data_io(),
+  fa = agser$data_fa(),
+  rdc_2019 = agser$rdc_res_2019(),
+  rdc_2024 = agser$rdc_res_2024()
+)
+
 paperdata <- list()
 
-rdc_2019 <- agser$rdc_res_2019()
-rdc_2024 <- agser$rdc_res_2024()
 ```
 
 
 ```{r}
 #| eval: false
- 
 saveRDS(paperdata, agser$opath$paper)
-
 ```
 
 
-# Farm productivity
+# National farm productivity
 
 ## TFP
 
-```{r}
-df <- agser$data_tfp()
+### 1948 = 100%
 
-# 2002 = 100%
-paperdata$tfp <- d <- df %>%
+Reproduce classic ERS [figures](https://www.ers.usda.gov/data-products/agricultural-productivity-in-the-united-states/summary-of-recent-findings) for verification.
+
+```{r}
+d <- dat$tfp %>%
   select(year, output, input, tfp, capital, labor, starts_with("int")) %>%
-  filter(year >= 2002) %>%
   mutate(across(!year, \(x) x / first(x))) %>%
   pivot_longer(!year)
 
-# reproduce classic ERS figure for verification
-# https://www.ers.usda.gov/data-products/agricultural-productivity-in-the-united-states/summary-of-recent-findings
-df %>%
-  select(year, output, input, tfp) %>%
-  mutate(across(c(output, input, tfp), \(x) x / first(x))) %>%
-  pivot_longer(!year) %>%
-  ggplot() +
-  geom_line(aes(year, value, color = name))
-
+# tfp
 d %>%
   filter(name %in% c("output", "input", "tfp")) %>%
   ggplot() +
   geom_line(aes(year, value, color = name))
 
 # input decomposition
-df %>%
-  select(year, capital, labor, int) %>%
-  mutate(across(c(capital, labor, int), \(x) x / first(x))) %>%
-  pivot_longer(!year) %>%
+d %>%
+  filter(name %in% c("capital", "labor", "int")) %>%
+  ggplot() +
+  geom_line(aes(year, value, color = name))
+
+# intermediates
+d %>%
+  filter(str_starts(name, "int_")) %>%
+  ggplot() +
+  geom_line(aes(year, value, color = name))
+
+# intermediates, no pesticide
+d %>%
+  filter(str_starts(name, "int_"), name != "int_pest") %>%
+  ggplot() +
+  geom_line(aes(year, value, color = name))
+
+```
+
+### 2002 = 100%
+
+
+```{r}
+
+paperdata$tfp <- d <- dat$tfp %>%
+  select(year, output, input, tfp, capital, labor, starts_with("int")) %>%
+  filter(year >= 2002) %>%
+  mutate(across(!year, \(x) x / first(x))) %>%
+  pivot_longer(!year)
+
+d %>%
+  filter(name %in% c("output", "input", "tfp")) %>%
   ggplot() +
   geom_line(aes(year, value, color = name))
 
 # input decomposition, 2002 = 100%
 d %>%
   filter(name %in% c("capital", "labor", "int")) %>%
-  ggplot() +
-  geom_line(aes(year, value, color = name))
-
-
-# intermediates
-df %>%
-  select(year, starts_with("int_")) %>%
-  mutate(across(!year, \(x) x / first(x))) %>%
-  pivot_longer(!year) %>%
-  ggplot() +
-  geom_line(aes(year, value, color = name))
-
-# intermediates, no pesticide
-df %>%
-  select(year, starts_with("int_")) %>%
-  select(!int_pest) %>%
-  mutate(across(!year, \(x) x / first(x))) %>%
-  pivot_longer(!year) %>%
   ggplot() +
   geom_line(aes(year, value, color = name))
 
@@ -150,33 +158,17 @@ d %>%
 
 ```
 
-### labor price index
+## Land productivity
 
-```{r}
-tibble(
-  year = 2002:2021,
-  # approximate Figure 2 from [@wang2025]
-  pidx_labcont = 1.03 ^ (year - 2002)
-) %>%
-  plot(type = "l")
-
-
-```
-
-
-## Land (partial-factor) productivity
+Partial factor productivity.
 
 Aggregate national statistics from Census of Agriculture and BEA.
 
 Sales per acre give a simple measure that combines all crops, but are affected by price fluctuations and lump together row crops with fruits and vegetables.
 Yields (production per acre) are crop-specific, and we look at corn, soybeans and wheat.
 
-```{r}
-df_farm <- agser$data_farm("national")
 
-```
-
-## sales per acre
+### sales per acre
 
 Increase over time with nearly constant total acreage.
 
@@ -184,7 +176,7 @@ Increase over time with nearly constant total acreage.
 #| fig-width: 10
 #| fig-height: 4
 
-d <- df_farm %>%
+d <- dat$farm_nat %>%
   filter(name %in% c("sale_crop", "land_crop")) %>%
   pivot_wider(id_cols = year) %>%
   mutate(sale_per_acre = sale_crop / land_crop) %>%
@@ -217,12 +209,12 @@ p3 <- d %>%
 p1 + p2 + p3
 ```
 
-### county distribution in agser sample
+#### county distribution in agser sample
 
 2000 counties: not all counties with farming have service providers.
 
 ```{r}
-rdc_2024$desc %>%
+dat$rdc_2024$desc %>%
   filter(variable == "yield", commodity == "crop") %>%
   ggplot(aes(x = year)) +
   geom_boxplot(aes(lower = `25%`, upper = `75%`, middle = `50%`, ymin = `25%`, ymax = `75%`, group = year), stat = "identity", width = 2) +
@@ -234,12 +226,12 @@ rdc_2024$desc %>%
 
 ```
 
-## yield
+### yield by crop
 
 Varying dynamic across crop types, but yields generally increase.
 
 ```{r}
-d <- df_farm %>%
+d <- dat$farm_nat %>%
   filter(str_detect(name, "^(land|prod)_(corn|soy|wheat)")) %>%
   separate_wider_delim(name, "_", names = c("name", "com")) %>%
   pivot_wider(id_cols = c(year, com)) %>%
@@ -272,7 +264,7 @@ d %>%
 ## Ag census
 
 Multiple categories relate to ag services.
-Contract labor expense likely also goes to providers.
+Contract labor expense also goes to providers.
 
 ```{r}
 #| rows.print: 20
@@ -301,12 +293,12 @@ tribble(
   mutate(short_desc = str_sub(short_desc, 1, -25))
 ```
 
--   All crop related expenses have been growing over time.
--   Ag services - at a very slow rate, +25% over 20 years.
--   Contract labor expenses - one of the fastest growths, nearly doubled.
+- All crop related expenses have been growing over time.
+- Ag services - at a very slow rate, +25% over 20 years.
+- Contract labor expenses - one of the fastest growths, nearly doubled.
 
 ```{r}
-d <- df_farm %>%
+d <- dat$farm_nat %>%
   filter(str_starts(name, "exp_"), !(name %in% c("exp_tot", "exp_anim", "exp_feed", "exp_int", "exp_tax", "exp_agser_anim"))) %>%
   mutate(name = if_else(str_detect(name, "agser"), "exp_agser", name)) %>%
   summarize(value = sum(value), .by = c(year, name))
@@ -335,7 +327,7 @@ d %>%
 
 
 ```{r}
-d <- df_farm %>%
+d <- dat$farm_nat %>%
   filter(str_starts(name, "exp_agser"), name != "exp_agser_anim")
 
 d %>%
@@ -362,7 +354,7 @@ d %>%
 
 
 ```{r}
-paperdata$exp_labor <- d <- df_farm %>%
+paperdata$exp_labor <- d <- dat$farm_nat %>%
   filter(name %in% c("exp_labhire", "exp_labcont")) %>%
   select(year, name, value) %>%
   arrange(name, year) %>%
@@ -384,26 +376,23 @@ d %>%
 
 ### county suppression
 
-```{r}
-df <- agser$data_farm("county")
+Custom work and hired labor expenses are suppressed in 100-200 counties every year.
+This is not too bad - and much better than suppression of NAICS-1151 in QCEW.
 
-df %>%
+```{r}
+dat$farm_cty %>%
   filter(name %in% c("exp_labcont", "exp_agser_cust")) %>%
   count(name, year, value_f) %>%
   pivot_wider(names_from = value_f, values_from = n)
 ```
 
 
-## ARMS
-
-National Service Expenditures by Type of Production (crop vs animal), annual.
-
 ## BEA
 
 Use of intermediate inputs and compensation of employees by crop industries.
 
 ```{r}
-df_io <- agser$data_io() %>%
+df_io <- dat$io %>%
   filter(com_code %in% c("115000", "T005", "V00100"), str_starts(ind_code, "111"))
 df_io <- bind_rows(
   df_io,
@@ -438,8 +427,8 @@ df_io %>%
   distinct(ind, ind_code, ind_name)
 ```
 
--   Ag service expenses grow faster than total intermediate expenses.
--   Much faster than "compensation of employees" - not clear if it includes contract labor.
+- Ag service expenses grow faster than total intermediate expenses.
+- Much faster than "compensation of employees" - not clear if it includes contract labor.
 
 ```{r}
 #| fig-width: 10
@@ -468,7 +457,7 @@ d %>%
 
 ```
 
-## agser expenses by crop
+### agser expenses by crop
 
 ```{r}
 #| fig-width: 10
@@ -510,7 +499,7 @@ Did it move from farms to providers?
 ```{r}
 #| fig-width: 10
 #| fig-height: 4
-d <- agser$data_farm("national") %>%
+d <- dat$farm_nat %>%
   filter(name == "asset_mach")
 
 p1 <- d %>%
@@ -540,9 +529,15 @@ Although the industry is lumped with fishing forestry and fishing, we can look a
 An interesting patterns stands out.
 While farms roughly doubled stock of tractors and other machinery, providers stock of tractors was small and declining, but stock of other machinery increased tenfold.
 
-```{r}
-paperdata$asset <- d <- agser$data_fa()
 
+```{r}
+paperdata$asset <- d <- dat$fa %>%
+  mutate(asset = case_match(asset_code, "EO30" ~ "other ag machine", "EO21" ~ "tractors")) %>%
+  mutate(industry = case_match(ind_code, "110C" ~ "farms", "113F" ~ "forest, fish and serv")) %>%
+  select(year, industry, asset, value) %>%
+  arrange(industry, asset, year) %>%
+  filter(year >= 2002) %>%
+  mutate(value_norm = value / first(value), .by = c(industry, asset))
 
 d %>%
   ggplot() +
@@ -559,8 +554,6 @@ d %>%
   scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale())) +
   facet_wrap(c("asset", "industry"), ncol = 2, scales = "fixed") +
   labs(title = "Asset stock, 2002 = 100%")
-
-
 
 d %>%
   ggplot() +
@@ -587,6 +580,44 @@ d %>%
 ```
 
 
+# Machinery and labor shares
+
+
+```{r}
+#| fig-width: 4
+#| fig-height: 3
+
+d1 <- dat$farm_nat %>%
+  filter(name %in% c("exp_labhire", "exp_labcont")) %>%
+  bind_rows(dat$farm_labor_pre2002) %>%
+  mutate(share = value / sum(value), .by = year) %>%
+  filter(name == "exp_labcont") %>%
+  select(year, share) %>%
+  mutate(name = "paid labor")
+d2 <- dat$fa %>%
+  filter(year %in% 1982:2022) %>%
+  summarize(value = sum(value), .by = c(year, ind_code)) %>%
+  mutate(share = value / sum(value), .by = year) %>%
+  filter(ind_code == "113F") %>%
+  select(year, share) %>%
+  mutate(name = "machinery")
+d <- bind_rows(d1, d2)
+
+d %>%
+  filter(year %in% seq(1982, 2022, 5)) %>%
+  pivot_wider(id_cols = year, values_from = share) %>%
+  arrange(year)
+
+d %>%
+  ggplot() +
+  geom_line(aes(year, share, linetype = name)) +
+  scale_x_continuous(name = "", breaks = seq(1982, 2022, 10)) +
+  scale_y_continuous(name = "", limits = c(0, 0.25), labels = scales::label_percent(scale_cut = scales::cut_short_scale())) +
+  theme(legend.title = element_blank(), legend.position = "inside", legend.justification = c(0, 1), legend.position.inside = c(0, 1)) +
+  labs(title = "Share managed by service providers")
+
+
+```
 
 
 
@@ -1315,12 +1346,6 @@ d %>%
 
 ```
 
-```{r}
-df %>%
-  filter(commodity != "crop")
-
-
-```
 
 
 ## productivity growth
