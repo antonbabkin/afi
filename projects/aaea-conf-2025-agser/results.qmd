@@ -71,6 +71,7 @@ dat <- list(
   farm_nat = agser$data_farm("national"),
   farm_cty = agser$data_farm("county"),
   farm_labor_pre2002 = agser$data_farm_labor_pre2002(),
+  agser_nat = agser$agser_nat(),
   io = agser$data_io(),
   fa = agser$data_fa(),
   rdc_2019 = agser$rdc_res_2019(),
@@ -209,22 +210,6 @@ p3 <- d %>%
 p1 + p2 + p3
 ```
 
-#### county distribution in agser sample
-
-2000 counties: not all counties with farming have service providers.
-
-```{r}
-dat$rdc_2024$desc %>%
-  filter(variable == "yield", commodity == "crop") %>%
-  ggplot(aes(x = year)) +
-  geom_boxplot(aes(lower = `25%`, upper = `75%`, middle = `50%`, ymin = `25%`, ymax = `75%`, group = year), stat = "identity", width = 2) +
-  geom_line(aes(y = mean)) +
-  geom_point(aes(y = mean)) +
-  scale_x_continuous(name = "", breaks = PAR$lbd_years) +
-  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_currency(scale_cut = scales::cut_short_scale())) +
-  labs(title = "Sales per acre (mean and [25%|50%|75%])")
-
-```
 
 ### yield by crop
 
@@ -258,6 +243,28 @@ d %>%
   labs(title = "Crop land, production and yield, 2002 = 100%")
 
 ```
+
+
+### agser sample stats
+
+2000 counties: not all counties with farming have service providers.
+
+```{r}
+paperdata$desc_yield <- d <- dat$rdc_2024$desc %>%
+  filter(variable == "yield") %>%
+  select(commodity, year, nobs, mean, sd, "25%", "50%", "75%") %>%
+  mutate(commodity = case_match(commodity, "crop" ~ "all crops", "soy" ~ "soybeans", .default = commodity)) %>%
+  arrange(commodity, year)
+d
+
+d %>%
+  ggplot(aes(x = year)) +
+  geom_boxplot(aes(lower = `25%`, upper = `75%`, middle = `50%`, ymin = `25%`, ymax = `75%`, group = year), stat = "identity", width = 2) +
+  geom_line(aes(y = mean)) +
+  facet_wrap("commodity", scales = "free_y")
+```
+
+
 
 # Farm expenses
 
@@ -350,29 +357,49 @@ d %>%
 
 ```
 
-### labor
+### crop services and QCEW pay
 
+```{r}
+paperdata$exp_agser <- d <- bind_rows(
+  dat$farm_nat %>%
+    filter(name %in% c("exp_labcont", "exp_agser_cust")),
+  dat$agser_nat %>%
+    filter(between(year, 2002, 2022)) %>%
+    mutate(name = "QCEW pay") %>%
+    select(year, name, value = pay)) %>%
+  select(year, name, value) %>%
+  arrange(name, year)
+d %>%
+  ggplot() +
+  geom_line(aes(year, value, linetype = name)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_currency(scale_cut = scales::cut_short_scale()))
+```
+
+
+### labor
 
 ```{r}
 paperdata$exp_labor <- d <- dat$farm_nat %>%
   filter(name %in% c("exp_labhire", "exp_labcont")) %>%
+  bind_rows(dat$farm_labor_pre2002) %>%
   select(year, name, value) %>%
   arrange(name, year) %>%
-  mutate(value_norm = value / first(value), .by = name)
-
+  mutate(value_norm = value / first(value), value_gr = value / lag(value) - 1, .by = name)
 d %>%
   ggplot() +
-  geom_line(aes(year, value, color = name)) +
-  scale_x_continuous(name = "", breaks = unique(d$year)) +
+  geom_line(aes(year, value, linetype = name)) +
   scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_currency(scale_cut = scales::cut_short_scale()))
-
 d %>%
   ggplot() +
-  geom_line(aes(year, value_norm, color = name)) +
-  scale_x_continuous(name = "", breaks = unique(d$year)) +
-  scale_y_continuous(name = "", limits = c(0.8, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale()))
+  geom_line(aes(year, value_norm, linetype = name)) +
+  scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale()))
+d %>%
+  ggplot() +
+  geom_line(aes(year, value_gr, linetype = name)) +
+  scale_y_continuous(name = "", labels = scales::label_percent(scale_cut = scales::cut_short_scale()))
 
 ```
+
 
 ### county suppression
 
@@ -536,13 +563,13 @@ paperdata$asset <- d <- dat$fa %>%
   mutate(industry = case_match(ind_code, "110C" ~ "farms", "113F" ~ "forest, fish and serv")) %>%
   select(year, industry, asset, value) %>%
   arrange(industry, asset, year) %>%
-  filter(year >= 2002) %>%
+  filter(year >= 1982) %>%
   mutate(value_norm = value / first(value), .by = c(industry, asset))
 
 d %>%
   ggplot() +
   geom_line(aes(year, value)) + 
-  scale_x_continuous(name = "", breaks = seq(2002, 2022, 5)) +
+  scale_x_continuous(name = "", breaks = seq(1982, 2022, 5)) +
   scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_currency(scale_cut = scales::cut_short_scale())) +
   facet_wrap(c("asset", "industry"), ncol = 2, scales = "free_y") +
   labs(title = "Asset stock")
@@ -550,15 +577,15 @@ d %>%
 d %>%
   ggplot() +
   geom_line(aes(year, value_norm)) +
-  scale_x_continuous(name = "", breaks = seq(2002, 2022, 5)) +
+  scale_x_continuous(name = "", breaks = seq(1982, 2022, 5)) +
   scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale())) +
   facet_wrap(c("asset", "industry"), ncol = 2, scales = "fixed") +
-  labs(title = "Asset stock, 2002 = 100%")
+  labs(title = "Asset stock, 1982 = 100%")
 
 d %>%
   ggplot() +
   geom_line(aes(year, value_norm, color = asset, linetype = industry)) +
-  scale_x_continuous(name = "", breaks = seq(2002, 2022, 5)) +
+  scale_x_continuous(name = "", breaks = seq(1982, 2022, 5)) +
   scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale()))
 
 # tractors and machine combined
@@ -568,7 +595,7 @@ d %>%
   mutate(value_norm = value / first(value), .by = industry) %>%
   ggplot() +
   geom_line(aes(year, value_norm, linetype = industry)) +
-  scale_x_continuous(name = "", breaks = seq(2002, 2022, 5)) +
+  scale_x_continuous(name = "", breaks = seq(1982, 2022, 5)) +
   scale_y_continuous(name = "", limits = c(0, NA), labels = scales::label_percent(scale_cut = scales::cut_short_scale()))
 
 d %>%
@@ -601,7 +628,7 @@ d2 <- dat$fa %>%
   filter(ind_code == "113F") %>%
   select(year, share) %>%
   mutate(name = "machinery")
-d <- bind_rows(d1, d2)
+paperdata$asset_sh <- d <- bind_rows(d1, d2)
 
 d %>%
   filter(year %in% seq(1982, 2022, 5)) %>%
@@ -708,7 +735,33 @@ df %>%
 
 # Service providers
 
-## QCEW
+## est and pay trend
+
+```{r}
+paperdata$agser_nat <- d <- bind_rows(
+  dat$rdc_2019 %>% mutate(pay = p941_sum + p943_sum, src = "LBD"),
+  dat$agser_nat %>% mutate(src = "QCEW")
+) %>%
+  select(year, src, est, pay, pay_nag = p941_sum, pay_ag = p943_sum) %>%
+  pivot_longer(!c(year, src)) %>%
+  bind_rows(dat$rdc_2024$desc %>%
+    filter(commodity == "crop", variable %in% c("est", "pay")) %>%
+    mutate(value = nobs * mean) %>%
+    select(year, name = variable, value) %>%
+    mutate(value = if_else(name == "pay", value * 1000, value)) %>%
+    mutate(src = "LBDr"))
+
+d %>%
+  ggplot() +
+  geom_line(aes(year, value, color = src)) +
+  scale_y_continuous(limits = c(0, NA)) +
+  facet_wrap("name", scales = "free_y")
+
+```
+
+
+
+## QCEW suppression
 
 
 ```{r}
@@ -761,9 +814,9 @@ d
 ```{r}
 #| fig-width: 10
 #| fig-height: 4
-d <- rdc_2019 %>%
+d <- dat$rdc_2019 %>%
   select(year, e941 = emp1_sum, p941 = p941_sum, p943_sum) %>%
-  filter(year >= 2002) %>%
+  # filter(year >= 2002) %>%
   pivot_longer(!year)
 
 d %>%
@@ -787,7 +840,7 @@ d %>%
 
 
 ```{r}
-paperdata$agser_size <- d <- rdc_2019 %>%
+paperdata$agser_size <- d <- dat$rdc_2019 %>%
   mutate(entry = birth / (birth + cont), exit = lag(death / (birth + cont))) %>%
   filter(year >= 2002) %>%
   select(year, est, entry, exit, pay_nonag = p941_sum, pay_ag = p943_sum) %>%

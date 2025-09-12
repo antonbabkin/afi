@@ -281,6 +281,17 @@ data_fa <- function() {
 
 # QCEW agser ----
 
+agser_nat <- function() {
+  qcew() %>%
+    filter(agglvl_code == "16", industry_code == "1151", own_code == "5") %>%
+    # have not added 2024 price deflator
+    filter(year < 2024) %>%
+    select(year, est = annual_avg_estabs, emp = annual_avg_emplvl, pay = total_annual_wages) %>%
+    collect() %>%
+    arrange(year) %>%
+    mutate(pay = deflate_dollars(year, pay))
+}
+
 data_agser <- function() {
   x1 <- qcew() %>%
     filter(
